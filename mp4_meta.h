@@ -33,7 +33,8 @@
 #define MP4_MAX_BUFFER_SIZE (10 * 1024 * 1024)
 #define MP4_MIN_BUFFER_SIZE 1024
 
-#define DEBUG_TAG "ts_mp4"
+//#define DEBUG_TAG "ts_mp4"
+const char PLUGIN_NAME[] = "ts_mp4";
 
 #define mp4_set_atom_name(p, n1, n2, n3, n4) \
   ((u_char *)(p))[4] = n1;                   \
@@ -66,31 +67,187 @@
   ((u_char *)(p))[7] = (u_char)(n)
 
 typedef enum {
+    //track box trak  “trak”也是一个container box，存放视频音频流的容器。其子box包含了该track的媒体数据引用和描述（hint track除外）
   MP4_TRAK_ATOM = 0,
-  MP4_TKHD_ATOM,
-  MP4_MDIA_ATOM,
-  MP4_MDHD_ATOM,
-  MP4_HDLR_ATOM,
-  MP4_MINF_ATOM,
-  MP4_VMHD_ATOM,
-  MP4_SMHD_ATOM,
-  MP4_DINF_ATOM,
-  MP4_STBL_ATOM,
-  MP4_STSD_ATOM,
-  MP4_STTS_ATOM,
+
+    //Track Header Box（tkhd）
+    /**
+     * 字段 字节数 意义
+     * box size 4 box大小
+     * box type 4 box类型
+     * version 1  box版本，0或1，一般为0。（以下字节数均按version=0
+     * flags 3  按位或操作结果值，预定义如下：
+                      0x000001 track_enabled，否则该track不被播放；
+                      0x000002 track_in_movie，表示该track在播放中被引用；
+                      0x000004 track_in_preview，表示该track在预览时被引用。
+                      一般该值为7，如果一个媒体所有track均未设置track_in_movie和track_in_preview，将被理解为所有track均设置了这两项；对于hint track，该值为0
+     * creation time 4  创建时间（相对于UTC时间1904-01-01零点的秒数）
+     * modification time 4  修改时间
+     * track id 4  id号，不能重复且不能为0
+     * reserved 4  保留位
+     * duration 4 track的时间长度
+     * reserved 8 保留位
+     * layer  2  视频层，默认为0，值小的在上层
+     * alternate group 2  track分组信息，默认为0表示该track未与其他track有群组关系
+     * volume 2  [8.8] 格式，如果为音频track，1.0（0x0100）表示最大音量；否则为0
+     * reserved 2 保留位
+     * matrix 36  视频变换矩阵
+     * width 4 宽
+     * height 4  高，均为 [16.16] 格式值，与sample描述中的实际画面大小比值，用于播放时的展示宽高
+     */
+  MP4_TKHD_ATOM,//Track Header Box（tkhd）
+
+    /**
+     *“mdia”定义了track媒体类型以及sample数据，描述sample信息。一般“mdia”包含一个“mdhd”，
+          一个“hdlr”和一个“minf”，其中“mdhd”为media header box，“hdlr”为handler reference box，
+          “minf”为media information box。
+     */
+  MP4_MDIA_ATOM,//Media Box（mdia）
+
+    //Media Header Box（mdhd）
+    /**  定义了 timescale ，trak 需要通过 timescale 换算成真实时间
+     * 字段 字节数 意义
+     * box size 4 box大小
+     * box type 4 box类型
+     * version 1  box版本，0或1，一般为0。（以下字节数均按version=0
+     * flags 3
+     * creation time 4  创建时间（相对于UTC时间1904-01-01零点的秒数）
+     * modification time 4  修改时间
+     * time scale  4 文件媒体在1秒时间内的刻度值，可以理解为1秒长度的时间单元数
+     * duration 4 track的时间长度
+     * language 2 媒体语言码。最高位为0，后面15位为3个字符（见ISO 639-2/T标准中定义）
+     * pre-defined 2
+     *
+     */
+  MP4_MDHD_ATOM,//Media Header Box（mdhd）
+
+    //Handler Reference Box
+    /**  “hdlr”解释了媒体的播放过程信息，该box也可以被包含在meta box（meta）中
+     * 字段 字节数 意义
+     * box size 4 box大小
+     * box type 4 box类型
+     * version 1  box版本，0或1，一般为0。（以下字节数均按version=0
+     * flags 3
+     * pre-defined 4
+     * handler type 4  在media box中，该值为4个字符： “vide”— video track “soun”— audio track “hint”— hint track
+     * reserved 12
+     * name 不定  track type name，以‘\0’结尾的字符串
+     */
+  MP4_HDLR_ATOM,//Handler Reference Box
+
+    //Media Information Box
+    /**
+     * “minf”存储了解释track媒体数据的handler-specific信息，media handler用这些信息将媒体时间映射到媒体
+        数据并进行处理。“minf”中的信息格式和内容与媒体类型以及解释媒体数据的media handler密切相关，其
+        他media handler不知道如何解释这些信息。“minf”是一个container box，其实际内容由子box说明。
+     * 一般情况下，“minf”包含一个header box，一个“dinf”和一个“stbl”，其中，header box根据track type
+       （即media handler type）分为“vmhd”、“smhd”、“hmhd”和“nmhd”，“dinf”为data information box，“stbl”为sample table box。
+     *
+     */
+  MP4_MINF_ATOM, //Media Information Box
+
+    //Media Information Header Box（vmhd、smhd、hmhd、nmhd） ---Video Media Header Box
+    /**
+     * box size 4 box大小
+     * box type 4 box类型
+     * version 1  box版本，0或1，一般为0。（以下字节数均按version=0
+     * flags 3
+     * graphics mode 4  视频合成模式，为0时拷贝原始图像，否则与opcolor进行合成
+     * opcolor 2 * 3  red，green，blue｝
+     */
+  MP4_VMHD_ATOM,//Video Media Header Box
+
+    //Sound Media Header Box
+    /**
+     * box size 4 box大小
+     * box type 4 box类型
+     * version 1  box版本，0或1，一般为0。（以下字节数均按version=0
+     * flags 3
+     * balance 2  立体声平衡，[8.8] 格式值，一般为0，-1.0表示全部左声道，1.0表示全部右声道
+     * reserved 2
+     */
+  MP4_SMHD_ATOM,//Sound Media Header Box
+
+    //Data Information Box
+    /**
+     * “dinf”解释如何定位媒体信息，是一个container box。“dinf”一般包含一个“dref”，即data reference box；
+       “dref”下会包含若干个“url”或“urn”，这些box组成一个表，用来定位track数据。简单的说，track可以被分成若干段，
+        每一段都可以根据“url”或“urn”指向的地址来获取数据，sample描述中会用这些片段的序号将这些片段组成一个完整的track。
+        一般情况下，当数据被完全包含在文件中时，“url”或“urn”中的定位字符串是空的。
+     * box size 4 box大小
+     * box type 4 box类型
+     * version 1  box版本，0或1，一般为0。（以下字节数均按version=0
+     * flags 3
+     * entry count 4 “url”或“urn”表的元素个数
+     * “url”或“urn”列表 不定
+             “url”或“urn”都是box，“url”的内容为字符串（location string），“urn”的内容为一对字符串（name string and location string）。
+              当“url”或“urn”的box flag为1时，字符串均为空。
+     *
+     */
+  MP4_DINF_ATOM,//Data Information Box
+
+    //Sample Table Box
+    /**
+     * “stbl”包含了关于track中sample所有时间和位置的信息，以及sample的编解码等信息。利用这个表，可以解释sample的时序、
+        类型、大小以及在各自存储容器中的位置。“stbl”是一个container box，其子box包括：sample description box（stsd）、
+        time to sample box（stts）、sample size box（stsz或stz2）、sample to chunk box（stsc）、chunk offset box（stco或co64）
+        、composition time to sample box（ctts）、sync sample box（stss)
+     */
+  MP4_STBL_ATOM,//Sample Table Box
+
+    /**
+     * box header和version字段后会有一个entry count字段，根据entry的个数，每个entry会有type信息，如“vide”、“sund”等，
+         根据type不同sample description会提供不同的信息，例如对于video track，会有“VisualSampleEntry”类型信息，
+         对于audio track会有“AudioSampleEntry”类型信息。
+       视频的编码类型、宽高、长度，音频的声道、采样等信息都会出现在这个box中。
+     */
+  MP4_STSD_ATOM,//Sample Description Box
+
+    //Time To Sample Box
+    /**
+     *  “stts”存储了sample的duration，描述了sample时序的映射方法，我们通过它可以找到任何时间的sample。
+         “stts”可以包含一个压缩的表来映射时间和sample序号，用其他的表来提供每个sample的长度和指针。
+         表中每个条目提供了在同一个时间偏移量里面连续的sample序号，以及samples的偏移量。递增这些偏移量，
+         就可以建立一个完整的time to sample表。
+     */
+  MP4_STTS_ATOM,//Time To Sample Box
   MP4_STTS_DATA,
-  MP4_STSS_ATOM,
+
+    //Sync Sample Box
+    /**
+     * “stss”确定media中的关键帧。对于压缩媒体数据，关键帧是一系列压缩序列的开始帧，其解压缩时不依赖以前的帧，
+        而后续帧的解压缩将依赖于这个关键帧。“stss”可以非常紧凑的标记媒体内的随机存取点，它包含一个sample序号表，
+        表内的每一项严格按照sample的序号排列，说明了媒体中的哪一个sample是关键帧。如果此表不存在，
+        说明每一个sample都是一个关键帧，是一个随机存取点。
+     */
+  MP4_STSS_ATOM,//Sync Sample Box
   MP4_STSS_DATA,
   MP4_CTTS_ATOM,
   MP4_CTTS_DATA,
-  MP4_STSC_ATOM,
+
+    /**
+     * 用chunk组织sample可以方便优化数据获取，一个thunk包含一个或多个sample。“stsc”中用一个表描述了sample
+        与chunk的映射关系，查看这张表就可以找到包含指定sample的thunk，从而找到这个sample。
+     */
+  MP4_STSC_ATOM,//Sample To Chunk Box
   MP4_STSC_CHUNK,
   MP4_STSC_DATA,
-  MP4_STSZ_ATOM,
+
+    /**
+     *“stsz” 定义了每个sample的大小，包含了媒体中全部sample的数目和一张给出每个sample大小的表。
+     *“stsz” 这个box相对来说体积是比较大的。
+     */
+  MP4_STSZ_ATOM,//Sample Size Box
   MP4_STSZ_DATA,
-  MP4_STCO_ATOM,
+
+    /**
+     * “stco”定义了每个thunk在媒体流中的位置。位置有两种可能，32位的和64位的，后者对非常大的电影很有用。
+     * 在一个表中只会有一种可能，这个位置是在整个文件中的，而不是在任何box中的，这样做就可以直接在文件中找到媒体数据，
+     * 而不用解释box。需要注意的是一旦前面的box有了任何改变，这张表都要重新建立，因为位置信息已经改变了。
+     */
+  MP4_STCO_ATOM,//Chunk Offset Box
   MP4_STCO_DATA,
-  MP4_CO64_ATOM,
+  MP4_CO64_ATOM,//64-bit chunk offset
   MP4_CO64_DATA,
   MP4_LAST_ATOM = MP4_CO64_DATA
 } TSMp4AtomID;
@@ -107,26 +264,29 @@ typedef struct {
 } mp4_atom_header64;
 
 typedef struct {
-  u_char size[4];
-  u_char name[4];
-  u_char version[1];
+  u_char size[4];//box大小
+  u_char name[4];//box类型
+  u_char version[1];//box版本
   u_char flags[3];
-  u_char creation_time[4];
-  u_char modification_time[4];
-  u_char timescale[4];
+  u_char creation_time[4];//创建时间
+  u_char modification_time[4];//修改时间
+  u_char timescale[4];//文件媒体在1秒时间内的刻度值，可以理解为1秒长度的时间单元数
+
+    //该track的时间长度，用duration和time scale值可以计算track时长， 比如audio track的time scale = 8000,
+    //duration = 560128，时长为70.016，video track的time scale = 600, duration = 42000，时长为70
   u_char duration[4];
-  u_char rate[4];
-  u_char volume[2];
-  u_char reserved[10];
-  u_char matrix[36];
+  u_char rate[4];//推荐播放速率，高16位和低16位分别为小数点整数部分和小数部分，即[16.16] 格式，该值为1.0（0x00010000）表示正常前向播放
+  u_char volume[2];//[8.8] 格式，如果为音频track，1.0（0x0100）表示最大音量；否则为0
+  u_char reserved[10];//保留位
+  u_char matrix[36];//视频变换矩阵
   u_char preview_time[4];
   u_char preview_duration[4];
   u_char poster_time[4];
   u_char selection_time[4];
   u_char selection_duration[4];
   u_char current_time[4];
-  u_char next_track_id[4];
-} mp4_mvhd_atom;
+  u_char next_track_id[4];//下一个track使用的id号
+} mp4_mvhd_atom;//Movie Header Box
 
 typedef struct {
   u_char size[4];
@@ -148,7 +308,7 @@ typedef struct {
   u_char selection_duration[4];
   u_char current_time[4];
   u_char next_track_id[4];
-} mp4_mvhd64_atom;
+} mp4_mvhd64_atom;//大文件的时候
 
 typedef struct {
   u_char size[4];
@@ -158,17 +318,17 @@ typedef struct {
   u_char creation_time[4];
   u_char modification_time[4];
   u_char track_id[4];
-  u_char reserved1[4];
-  u_char duration[4];
-  u_char reserved2[8];
-  u_char layer[2];
+  u_char reserved1[4];//保留位
+  u_char duration[4];//track的时间长度
+  u_char reserved2[8];//保留位
+  u_char layer[2];//视频层，默认为0，值小的在上层
   u_char group[2];
-  u_char volume[2];
+  u_char volume[2];//[8.8] 格式，如果为音频track，1.0（0x0100）表示最大音量；否则为0
   u_char reverved3[2];
   u_char matrix[36];
   u_char width[4];
   u_char heigth[4];
-} mp4_tkhd_atom;
+} mp4_tkhd_atom;//Track Header Box
 
 typedef struct {
   u_char size[4];
@@ -201,7 +361,7 @@ typedef struct {
   u_char duration[4];
   u_char language[2];
   u_char quality[2];
-} mp4_mdhd_atom;
+} mp4_mdhd_atom;//Media Header Box
 
 typedef struct {
   u_char size[4];
@@ -225,7 +385,7 @@ typedef struct {
 
   u_char media_size[4];
   u_char media_name[4];
-} mp4_stsd_atom;
+} mp4_stsd_atom;//Sample Description Box  视频的编码类型、宽高、长度，音频的声道、采样等信息都会出现在这个box中。
 
 typedef struct {
   u_char size[4];
@@ -233,7 +393,7 @@ typedef struct {
   u_char version[1];
   u_char flags[3];
   u_char entries[4];
-} mp4_stts_atom;
+} mp4_stts_atom;//Time To Sample Box   “stts”存储了sample的duration，描述了sample时序的映射方法，我们通过它可 以找到任何时间的sample。
 
 typedef struct {
   u_char count[4];
@@ -246,7 +406,7 @@ typedef struct {
   u_char version[1];
   u_char flags[3];
   u_char entries[4];
-} mp4_stss_atom;
+} mp4_stss_atom;//Sync Sample Box  “stss”确定media中的关键帧
 
 typedef struct {
   u_char size[4];
@@ -267,7 +427,8 @@ typedef struct {
   u_char version[1];
   u_char flags[3];
   u_char entries[4];
-} mp4_stsc_atom;
+} mp4_stsc_atom;//Sample To Chunk Box 用chunk组织sample可以方便优化数据获取，
+//一个thunk包含一个或多个sample。“stsc”中用一个表描述了sample与chunk的映射关系，查看这张表就可以找到包含指定sample的thunk，从而找到这个sample。
 
 typedef struct {
   u_char chunk[4];
@@ -282,7 +443,7 @@ typedef struct {
   u_char flags[3];
   u_char uniform_size[4];
   u_char entries[4];
-} mp4_stsz_atom;
+} mp4_stsz_atom;//Sample Size Box  “stsz” 定义了每个sample的大小，包含了媒体中全部sample的数目和一张给出每个sample大小的表。
 
 typedef struct {
   u_char size[4];
@@ -290,7 +451,7 @@ typedef struct {
   u_char version[1];
   u_char flags[3];
   u_char entries[4];
-} mp4_stco_atom;
+} mp4_stco_atom;//Chunk Offset Box  “stco”定义了每个thunk在媒体流中的位置。位置有两种可能，32位的和64位的
 
 typedef struct {
   u_char size[4];
@@ -362,8 +523,8 @@ public:
   ~Mp4Trak() {}
 
 public:
-  uint32_t timescale;
-  int64_t duration;
+  uint32_t timescale;//文件媒体在1秒时间内的刻度值，可以理解为1秒长度的时间单元数
+  int64_t duration;//时长
 
   uint32_t time_to_sample_entries;     // stsc
   uint32_t sample_to_chunk_entries;    // stsc
@@ -378,12 +539,12 @@ public:
   uint64_t chunk_samples_size;
   off_t start_offset;
 
-  size_t tkhd_size;
-  size_t mdhd_size;
-  size_t hdlr_size;
-  size_t vmhd_size;
-  size_t smhd_size;
-  size_t dinf_size;
+  size_t tkhd_size;//track header box size
+  size_t mdhd_size;//media header box size
+  size_t hdlr_size;//handler reference box size
+  size_t vmhd_size;//video media header box size
+  size_t smhd_size;//sound media header box size
+  size_t dinf_size;//data information box size
   size_t size;
 
   BufferHandle atoms[MP4_LAST_ATOM + 1];
@@ -396,6 +557,7 @@ class Mp4Meta
 public:
   Mp4Meta()
     : start(0),
+      end(0),
       cl(0),
       content_length(0),
       meta_atom_size(0),
@@ -407,6 +569,7 @@ public:
       ftyp_size(0),
       moov_size(0),
       start_pos(0),
+      end_pos(0),
       timescale(0),
       trak_num(0),
       passed(0),
@@ -496,6 +659,7 @@ public:
 
 public:
   int64_t start;          // requested start time, measured in milliseconds.
+  int64_t end;
   int64_t cl;             // the total size of the mp4 file
   int64_t content_length; // the size of the new mp4 file
   int64_t meta_atom_size;
@@ -523,6 +687,7 @@ public:
   int64_t ftyp_size;
   int64_t moov_size;
   int64_t start_pos; // start position of the new mp4 file
+  int64_t end_pos; // end position of the new mp4 file
   uint32_t timescale;
   uint32_t trak_num;
   int64_t passed;

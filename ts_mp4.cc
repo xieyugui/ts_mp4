@@ -18,7 +18,6 @@
 
 #include "mp4_common.h"
 
-static char *ts_arg(const char *param, size_t param_len, const char *key, size_t key_len, size_t *val_len);
 static int mp4_handler(TSCont contp, TSEvent event, void *edata);
 static void mp4_cache_lookup_complete(Mp4Context *mc, TSHttpTxn txnp);
 static void mp4_read_response(Mp4Context *mc, TSHttpTxn txnp);
@@ -64,11 +63,12 @@ TSRemapStatus
 TSRemapDoRemap(void * /* ih ATS_UNUSED */, TSHttpTxn rh, TSRemapRequestInfo *rri)
 {
   const char *method, *query, *path;
+  const char *f_start, *f_end;
   int method_len, query_len, path_len;
   size_t val_len;
   const char *val;
   int ret;
-  float start;
+  float start, end;
   char buf[1024];
   int buf_len;
   int left, right;
@@ -92,38 +92,37 @@ TSRemapDoRemap(void * /* ih ATS_UNUSED */, TSHttpTxn rh, TSRemapRequestInfo *rri
   }
 
   start = 0;
+  end = 0;
   query = TSUrlHttpQueryGet(rri->requestBufp, rri->requestUrl, &query_len);
-
-  val = ts_arg(query, query_len, "start", sizeof("start") - 1, &val_len);
-  if (val != nullptr) {
-    ret = sscanf(val, "%f", &start);
-    if (ret != 1) {
-      start = 0;
-    }
-  }
-
-  if (start == 0) {
+  TSDebug(PLUGIN_NAME, "TSRemapDoRemap query=%s!",query);
+  if(!query) {
+    TSDebug(PLUGIN_NAME, "TSRemapDoRemap query is null!");
     return TSREMAP_NO_REMAP;
-
-  } else if (start < 0) {
-    TSHttpTxnSetHttpRetStatus(rh, TS_HTTP_STATUS_BAD_REQUEST);
-    TSHttpTxnErrorBodySet(rh, TSstrdup("Invalid request."), sizeof("Invalid request.") - 1, nullptr);
   }
 
-  // reset args
-  left  = val - sizeof("start") - query;
-  right = query + query_len - val - val_len;
+  f_start = strcasestr(query, "start=");
+  if (!f_start) {
+    TSDebug(PLUGIN_NAME, "TSRemapDoRemap not found start=");
+    return TSREMAP_NO_REMAP;
+  }
+  start = strtod(f_start + 6, NULL);
 
-  if (left > 0) {
-    left--;
+  f_end = strcasestr(query, "&end=");
+
+  if(f_end) {
+    end = strtod(f_end + 5, NULL);
   }
 
-  if (left == 0 && right > 0) {
-    right--;
+  TSDebug(PLUGIN_NAME, "TSRemapDoRemap start=%lf, end=%lf", start, end);
+  if (start < 0 || end < 0 || (start > 0 && end > 0 && start >= end)) {
+    return TSREMAP_NO_REMAP;
   }
 
-  buf_len = sprintf(buf, "%.*s%.*s", left, query, right, query + query_len - right);
-  TSUrlHttpQuerySet(rri->requestBufp, rri->requestUrl, buf, buf_len);
+
+  //remove query
+  if (TSUrlHttpQuerySet(rri->requestBufp, rri->requestUrl, "", -1) == TS_ERROR) {
+    return TSREMAP_NO_REMAP;
+  }
 
   // remove Accept-Encoding
   ae_field = TSMimeHdrFieldFind(rri->requestBufp, rri->requestHdrp, TS_MIME_FIELD_ACCEPT_ENCODING, TS_MIME_LEN_ACCEPT_ENCODING);
@@ -139,7 +138,7 @@ TSRemapDoRemap(void * /* ih ATS_UNUSED */, TSHttpTxn rh, TSRemapRequestInfo *rri
     TSHandleMLocRelease(rri->requestBufp, rri->requestHdrp, range_field);
   }
 
-  mc    = new Mp4Context(start);
+  mc    = new Mp4Context(start, end);
   contp = TSContCreate(mp4_handler, nullptr);
   TSContDataSet(contp, mc);
 
@@ -161,13 +160,16 @@ mp4_handler(TSCont contp, TSEvent event, void *edata)
   switch (event) {
   case TS_EVENT_HTTP_CACHE_LOOKUP_COMPLETE:
     mp4_cache_lookup_complete(mc, txnp);
+    TSDebug(PLUGIN_NAME, "\tEvent is TS_EVENT_HTTP_CACHE_LOOKUP_COMPLETE");
     break;
 
   case TS_EVENT_HTTP_READ_RESPONSE_HDR:
     mp4_read_response(mc, txnp);
+    TSDebug(PLUGIN_NAME, "\tEvent is TS_EVENT_HTTP_READ_RESPONSE_HDR");
     break;
 
   case TS_EVENT_HTTP_TXN_CLOSE:
+    TSDebug(PLUGIN_NAME, "TS_EVENT_HTTP_TXN_CLOSE");
     delete mc;
     TSContDestroy(contp);
     break;
@@ -221,6 +223,7 @@ mp4_cache_lookup_complete(Mp4Context *mc, TSHttpTxn txnp)
     goto release;
   }
 
+  TSDebug(PLUGIN_NAME, "[mp4_cache_lookup_complete]  content_length=%ld", n);
   mc->cl = n;
   mp4_add_transform(mc, txnp);
 
@@ -259,6 +262,8 @@ mp4_read_response(Mp4Context *mc, TSHttpTxn txnp)
     goto release;
   }
 
+  TSDebug(PLUGIN_NAME, "[mp4_cache_lookup_complete]  content_length=%ld", n);
+
   mc->cl = n;
   mp4_add_transform(mc, txnp);
 
@@ -272,11 +277,28 @@ mp4_add_transform(Mp4Context *mc, TSHttpTxn txnp)
 {
   TSVConn connp;
 
+  if (!mc)
+    return;
+
+  if (mc->start >= mc->cl || (mc->start == 0 && mc->end == 0)) {
+    return;
+  }
+
+  if (mc->end >= mc->cl) {
+      mc->end = 0;
+  }
+
+  if (mc->end <= mc->start) {
+      mc->end = 0;
+  }
+
   if (mc->transform_added) {
     return;
   }
 
-  mc->mtc = new Mp4TransformContext(mc->start, mc->cl);
+  mc->mtc = new Mp4TransformContext(mc->start, mc->end, mc->cl);
+
+  TSDebug(PLUGIN_NAME, "[mp4_add_transform] start=%ld, end=%ld, cl=%ld",mc->start, mc->end, mc->cl);
 
   TSHttpTxnUntransformedRespCache(txnp, 1);
   TSHttpTxnTransformedRespCache(txnp, 0);
@@ -296,21 +318,25 @@ mp4_transform_entry(TSCont contp, TSEvent event, void * /* edata ATS_UNUSED */)
 
   if (TSVConnClosedGet(contp)) {
     TSContDestroy(contp);
+    TSDebug(PLUGIN_NAME, "\tVConn is closed");
     return 0;
   }
 
   switch (event) {
   case TS_EVENT_ERROR:
+    TSDebug(PLUGIN_NAME, "\tEvent is TS_EVENT_ERROR");
     input_vio = TSVConnWriteVIOGet(contp);
     TSContCall(TSVIOContGet(input_vio), TS_EVENT_ERROR, input_vio);
     break;
 
   case TS_EVENT_VCONN_WRITE_COMPLETE:
+    TSDebug(PLUGIN_NAME, "\tEvent is TS_EVENT_VCONN_WRITE_COMPLETE");
     TSVConnShutdown(TSTransformOutputVConnGet(contp), 0, 1);
     break;
 
   case TS_EVENT_VCONN_WRITE_READY:
   default:
+    TSDebug(PLUGIN_NAME, "\tEvent is TS_EVENT_VCONN_WRITE_READY");
     mp4_transform_handler(contp, mc);
     break;
   }
@@ -321,6 +347,8 @@ mp4_transform_entry(TSCont contp, TSEvent event, void * /* edata ATS_UNUSED */)
 static int
 mp4_transform_handler(TSCont contp, Mp4Context *mc)
 {
+    TSDebug(PLUGIN_NAME, "[mp4_transform_handler] start");
+
   TSVConn output_conn;
   TSVIO input_vio;
   TSIOBufferReader input_reader;
@@ -339,6 +367,8 @@ mp4_transform_handler(TSCont contp, Mp4Context *mc)
     if (mtc->output.buffer) {
       TSVIONBytesSet(mtc->output.vio, mtc->total);
       TSVIOReenable(mtc->output.vio);
+      TSDebug(PLUGIN_NAME, "[mp4_transform_handler] !input_buff Done Get=%ld, total=%ld",
+                    TSVIONDoneGet(mtc->output.vio), mtc->total);
     }
     return 1;
   }
@@ -346,15 +376,24 @@ mp4_transform_handler(TSCont contp, Mp4Context *mc)
   avail         = TSIOBufferReaderAvail(input_reader);
   upstream_done = TSVIONDoneGet(input_vio);
 
+   toread     = TSVIONTodoGet(input_vio);
+   TSDebug(PLUGIN_NAME, "[mp4_transform_handler] before write toread is %ld", toread);
+
   TSIOBufferCopy(mtc->res_buffer, input_reader, avail, 0);
   TSIOBufferReaderConsume(input_reader, avail);
   TSVIONDoneSet(input_vio, upstream_done + avail);
 
   toread     = TSVIONTodoGet(input_vio);
+
+  TSDebug(PLUGIN_NAME, "[mp4_transform_handler] after write toread is %ld", toread);
+  TSDebug(PLUGIN_NAME, "[mp4_transform_handler] input_vio avail is %ld", avail);
+
   write_down = false;
 
   if (!mtc->parse_over) {
+    TSDebug(PLUGIN_NAME, "[mp4_transform_handler] in parse_over toread-avail=%ld",(toread-avail));
     ret = mp4_parse_meta(mtc, toread <= 0);
+    TSDebug(PLUGIN_NAME, "[mp4_transform_handler] ret=%d",ret);
     if (ret == 0) {
       goto trans;
     }
@@ -364,13 +403,15 @@ mp4_transform_handler(TSCont contp, Mp4Context *mc)
     mtc->output.reader = TSIOBufferReaderAlloc(mtc->output.buffer);
 
     if (ret < 0) {
-      mtc->output.vio    = TSVConnWrite(output_conn, contp, mtc->output.reader, mc->cl);
+      mtc->output.vio = TSVConnWrite(output_conn, contp, mtc->output.reader, mc->cl);
       mtc->raw_transform = true;
 
     } else {
       mtc->output.vio = TSVConnWrite(output_conn, contp, mtc->output.reader, mtc->content_length);
     }
   }
+
+  TSDebug(PLUGIN_NAME, "[mp4_transform_handler] out parse_over");
 
   avail = TSIOBufferReaderAvail(mtc->res_reader);
 
@@ -429,6 +470,8 @@ trans:
     TSContCall(TSVIOContGet(input_vio), TS_EVENT_VCONN_WRITE_READY, input_vio);
 
   } else {
+    TSDebug(PLUGIN_NAME, "last Done Get=%ld, input_vio Done=%ld, mtc->total=%ld", TSVIONDoneGet(mtc->output.vio),
+            TSVIONDoneGet(input_vio), mtc->total);
     TSVIONBytesSet(mtc->output.vio, mtc->total);
     TSContCall(TSVIOContGet(input_vio), TS_EVENT_VCONN_WRITE_COMPLETE, input_vio);
   }
@@ -465,6 +508,7 @@ mp4_parse_meta(Mp4TransformContext *mtc, bool body_complete)
 
   if (ret > 0) { // meta success
     mtc->tail           = mm->start_pos;
+    mtc->end_tail       = mm->end_pos;
     mtc->content_length = mm->content_length;
     mtc->meta_length    = TSIOBufferReaderAvail(mm->out_handle.reader);
   }
@@ -477,42 +521,3 @@ mp4_parse_meta(Mp4TransformContext *mtc, bool body_complete)
   return ret;
 }
 
-static char *
-ts_arg(const char *param, size_t param_len, const char *key, size_t key_len, size_t *val_len)
-{
-  const char *p, *last;
-  const char *val;
-
-  *val_len = 0;
-
-  if (!param || !param_len) {
-    return nullptr;
-  }
-
-  p    = param;
-  last = p + param_len;
-
-  for (; p < last; p++) {
-    p = (char *)memmem(p, last - p, key, key_len);
-
-    if (p == nullptr) {
-      return nullptr;
-    }
-
-    if ((p == param || *(p - 1) == '&') && *(p + key_len) == '=') {
-      val = p + key_len + 1;
-
-      p = (char *)memchr(p, '&', last - p);
-
-      if (p == nullptr) {
-        p = param + param_len;
-      }
-
-      *val_len = p - val;
-
-      return (char *)val;
-    }
-  }
-
-  return nullptr;
-}
