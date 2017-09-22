@@ -110,7 +110,7 @@ Mp4Meta::mp4_meta_consume(int64_t size)
   passed += size;
 }
 
-int
+int//开始进行moov box 修改
 Mp4Meta::post_process_meta()
 {
   off_t start_offset, adjustment;
@@ -122,14 +122,14 @@ Mp4Meta::post_process_meta()
     return -1;
   }
 
-  if (mdat_atom.buffer == nullptr) {
+  if (mdat_atom.buffer == nullptr) {// 如果先读到mdat 用来存储媒体数据，就按照失败处理
     return -1;
   }
 
   out_handle.buffer = TSIOBufferCreate();
   out_handle.reader = TSIOBufferReaderAlloc(out_handle.buffer);
 
-  if (ftyp_atom.buffer) {
+  if (ftyp_atom.buffer) {// 不用修改直接copy
     TSIOBufferCopy(out_handle.buffer, ftyp_atom.reader, TSIOBufferReaderAvail(ftyp_atom.reader), 0);
   }
 
@@ -140,7 +140,7 @@ Mp4Meta::post_process_meta()
   if (mvhd_atom.buffer) {
     avail = TSIOBufferReaderAvail(mvhd_atom.reader);
     TSIOBufferCopy(out_handle.buffer, mvhd_atom.reader, avail, 0);
-    this->moov_size += avail;
+    this->moov_size += avail; //计算move data
   }
 
   start_offset = cl;
@@ -1063,6 +1063,14 @@ int Mp4Meta::mp4_read_mdat_atom(int64_t /* atom_header_size ATS_UNUSED */, int64
   return 1;
 }
 
+/**
+ * time to sample box
+ * size, type, version flags, number of entries
+ * entry 1: sample count 1, sample duration 42
+ * .......
+ * 实际时间 0.2s  对应的duration = mdhd.timescale * 0.2s
+ *   entries {u_char count[4],u_char duration[4]}
+ */
 int
 Mp4Meta::mp4_update_stts_atom(Mp4Trak *trak)
 {
@@ -1080,6 +1088,7 @@ Mp4Meta::mp4_update_stts_atom(Mp4Trak *trak)
   sum = start_count = 0;
 
   entries    = trak->time_to_sample_entries;
+    //time = duration / timescale      duration = time * timescale / 1000 (将start 毫秒转为秒)
   start_time = this->start * trak->timescale / 1000;
   if (this->rs > 0) {
     start_time = (uint64_t)(this->rs * trak->timescale / 1000);
@@ -1097,12 +1106,12 @@ Mp4Meta::mp4_update_stts_atom(Mp4Trak *trak)
       pass = (uint32_t)(start_time / duration);
       start_sample += pass;
 
-      goto found;
+      goto found;//found
     }
 
-    start_sample += count;
-    start_time -= (uint64_t)count * duration;
-    TSIOBufferReaderConsume(readerp, sizeof(mp4_stts_entry));
+    start_sample += count;//计算已经丢弃了多少个sample
+    start_time -= (uint64_t)count * duration; //还剩多少时间
+    TSIOBufferReaderConsume(readerp, sizeof(mp4_stts_entry)); //丢弃
   }
 
 found:
@@ -1160,6 +1169,13 @@ found:
   return 0;
 }
 
+
+/**
+ * Sync Sample Box
+ * size, type, version flags, number of entries
+ *
+ * 该box 决定了整个mp4 文件是否可以拖动，如果box 只有一个entry,则拖拉时，进度到最后
+ */
 int
 Mp4Meta::mp4_update_stss_atom(Mp4Trak *trak)
 {
@@ -1276,6 +1292,17 @@ found:
   return 0;
 }
 
+/**
+ * sample to chunk box
+ * size, type, version, flags, number of entries
+ * entry 1:first chunk 1, samples pre chunk 13, sample description 1 ('self-ref')
+ * ...............
+ * 第500个sample 500 ＝ 28 ＊ 13 ＋ 12 ＋ 13*9 ＋ 7
+ *
+ * first_chunk 表示 这一组相同类型的chunk中 的第一个chunk数。
+ * 这些chunk 中包含的Sample 数量，即samples_per_chunk 是一致的。
+ * 每个Sample 可以通过sample_description_index 去stsd box 找到描述信息。
+ */
 int
 Mp4Meta::mp4_update_stsc_atom(Mp4Trak *trak)
 {
@@ -1468,7 +1495,7 @@ Mp4Meta::mp4_update_co64_atom(Mp4Trak *trak)
   return 0;
 }
 
-int
+int//chunk offset box 定义了每个thunk在流媒体中的位置
 Mp4Meta::mp4_update_stco_atom(Mp4Trak *trak)
 {
   int64_t atom_size, avail;

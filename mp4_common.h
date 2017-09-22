@@ -58,7 +58,7 @@ class Mp4TransformContext
 {
 public:
   Mp4TransformContext(float offset, float end_offset, int64_t cl)
-    : total(0), tail(0), end_tail(0), pos(0), content_length(0), meta_length(0), parse_over(false), raw_transform(false)
+    : total(0), start_tail(0), end_tail(0), start_pos(0), end_pos(0), content_length(0), meta_length(0), parse_over(false), raw_transform(false)
   {
     res_buffer = TSIOBufferCreate();
     res_reader = TSIOBufferReaderAlloc(res_buffer);
@@ -88,9 +88,10 @@ public:
   IOHandle output;
   Mp4Meta mm;
   int64_t total;
-  int64_t tail;
+  int64_t start_tail;
   int64_t end_tail;
-  int64_t pos;
+  int64_t start_pos;//start 起始结束丢弃的位置
+  int64_t end_pos; //end 丢弃的位置
   int64_t content_length;
   int64_t meta_length;
 

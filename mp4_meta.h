@@ -274,7 +274,7 @@ typedef struct {
 
     //该track的时间长度，用duration和time scale值可以计算track时长， 比如audio track的time scale = 8000,
     //duration = 560128，时长为70.016，video track的time scale = 600, duration = 42000，时长为70
-  u_char duration[4];
+  u_char duration[4]; // time = duration / timescale
   u_char rate[4];//推荐播放速率，高16位和低16位分别为小数点整数部分和小数部分，即[16.16] 格式，该值为1.0（0x00010000）表示正常前向播放
   u_char volume[2];//[8.8] 格式，如果为音频track，1.0（0x0100）表示最大音量；否则为0
   u_char reserved[10];//保留位
@@ -681,7 +681,7 @@ public:
 
   Mp4Trak *trak_vec[MP4_MAX_TRAK_NUM];
 
-  double rs;
+  double rs; //丢弃了多少时间
   double rate;
 
   int64_t ftyp_size;
