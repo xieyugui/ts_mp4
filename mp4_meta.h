@@ -686,11 +686,11 @@ public:
 
   int64_t ftyp_size;
   int64_t moov_size;
-  int64_t start_pos; // start position of the new mp4 file
+  int64_t start_pos; // start position of the new mp4 file  新文件的起始位置
   int64_t end_pos; // end position of the new mp4 file
   uint32_t timescale;
   uint32_t trak_num;
-  int64_t passed;
+  int64_t passed; //已经消费了多少字节
 
   u_char mdat_atom_header[16];
   bool meta_complete;

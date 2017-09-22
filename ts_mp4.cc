@@ -277,20 +277,20 @@ mp4_add_transform(Mp4Context *mc, TSHttpTxn txnp)
 {
   TSVConn connp;
 
-  if (!mc)
-    return;
-
-  if (mc->start >= mc->cl || (mc->start == 0 && mc->end == 0)) {
-    return;
-  }
-
-  if (mc->end >= mc->cl) {
-      mc->end = 0;
-  }
-
-  if (mc->end <= mc->start) {
-      mc->end = 0;
-  }
+//  if (!mc)
+//    return;
+//
+//  if (mc->start >= mc->cl || (mc->start == 0 && mc->end == 0)) {
+//    return;
+//  }
+//
+//  if (mc->end >= mc->cl) {
+//      mc->end = 0;
+//  }
+//
+//  if (mc->end <= mc->start) {
+//      mc->end = 0;
+//  }
 
   if (mc->transform_added) {
     return;
