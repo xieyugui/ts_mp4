@@ -1252,7 +1252,7 @@ int Mp4Meta::mp4_crop_stts_data_end(Mp4Trak *trak)
     if (old_sample != key_sample) {
         end_sample = key_sample - trak->start_sample;
     }
-    TSDebug(PLUGIN_NAME, "[mp4_crop_stts_data_end] start_sample= %lu", end_sample);
+    TSDebug(PLUGIN_NAME, "[mp4_crop_stts_data_end] end_sample= %lu", end_sample);
     readerp = TSIOBufferReaderClone(trak->atoms[MP4_STTS_DATA].reader);
 
     trak->end_sample = end_sample;//找到end_sample
@@ -1262,8 +1262,8 @@ int Mp4Meta::mp4_crop_stts_data_end(Mp4Trak *trak)
         count    = (uint32_t)mp4_reader_get_32value(readerp, offsetof(mp4_stts_entry, count));
 
         if (end_sample < count) {
-            count -= end_sample;
-            mp4_reader_set_32value(readerp, offsetof(mp4_stts_entry, count), count);
+            //count -= end_sample;
+            mp4_reader_set_32value(readerp, offsetof(mp4_stts_entry, count), end_sample);
             //计算总共保留的duration
             sum += (uint64_t)end_sample * duration;
             break;
@@ -1284,7 +1284,7 @@ int Mp4Meta::mp4_crop_stts_data_end(Mp4Trak *trak)
     }
 
 //    left = entries - i; //之前遍历，丢弃了，剩下多少数据
-    left = i;
+    left = i+1;
     //mp4_update_stts_atom left=2, entries=2
     TSDebug(PLUGIN_NAME, "[mp4_crop_stts_data_end] left=%u, entries=%u,mp4_stts_entry=%lu", left,entries, sizeof(mp4_stts_entry));
     atom_size = sizeof(mp4_stts_atom) + left * sizeof(mp4_stts_entry);
@@ -1294,6 +1294,7 @@ int Mp4Meta::mp4_crop_stts_data_end(Mp4Trak *trak)
     mp4_reader_set_32value(trak->atoms[MP4_STTS_ATOM].reader, offsetof(mp4_stts_atom, size), atom_size);
     mp4_reader_set_32value(trak->atoms[MP4_STTS_ATOM].reader, offsetof(mp4_stts_atom, entries), left);
 
+    TSIOBufferReaderConsume(copy_reader, TSIOBufferReaderAvail(copy_reader));
     avail = TSIOBufferReaderAvail(trak->atoms[MP4_STTS_DATA].reader);
     TSDebug(PLUGIN_NAME, "[mp4_crop_stts_data_end] MP4_STTS_DATA avail=%ld", avail);
     TSIOBufferCopy(this->copy_buffer, trak->atoms[MP4_STTS_DATA].reader, left * sizeof(mp4_stts_entry), 0);
