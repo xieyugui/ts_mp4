@@ -24,7 +24,7 @@ static mp4_atom_handler mp4_atoms[] = {{"ftyp", &Mp4Meta::mp4_read_ftyp_atom},//
                                        {nullptr, nullptr}};
 
 static mp4_atom_handler mp4_moov_atoms[] = {{"mvhd", &Mp4Meta::mp4_read_mvhd_atom},//文件总体信息，如时长，创建时间等
-                                            {"trak", &Mp4Meta::mp4_read_trak_atom},//存放视频，音频的容器
+                                            {"trak", &Mp4Meta::mp4_read_trak_atom},//存放视频，音频的容器  包括video trak,audio trak
                                             {"cmov", &Mp4Meta::mp4_read_cmov_atom},//
                                             {nullptr, nullptr}};
 
@@ -145,6 +145,7 @@ Mp4Meta::post_process_meta()
   }
 
   start_offset = cl;
+  //start_offset= 86812929
   TSDebug(PLUGIN_NAME, "[post_process_meta] start_offset= %ld", start_offset);
   for (i = 0; i < trak_num; i++) {
     trak = trak_vec[i];
@@ -188,6 +189,7 @@ Mp4Meta::post_process_meta()
     TSDebug(PLUGIN_NAME, "[post_process_meta] for moov_size= %ld, trak->size= %ld", this->moov_size, trak->size);
     //trak->start_offset 每个trak 的偏移量
     TSDebug(PLUGIN_NAME, "[post_process_meta] start_offset = %ld, trak->start_offset", start_offset, trak->start_offset);
+    //因为包含了多个trak 列入 video trak, audio trak 所以多者之间要找最小的start_offset
     if (start_offset > trak->start_offset) {
       start_offset = trak->start_offset;
     }
@@ -526,9 +528,9 @@ Mp4Meta::mp4_read_trak_atom(int64_t atom_header_size, int64_t atom_data_size)
     return -1;
   }
 
-  TSDebug(PLUGIN_NAME, "[mp4_read_trak_atom] trak_num = %lu", trak_num-1);
   trak                 = new Mp4Trak();
   trak_vec[trak_num++] = trak;
+  TSDebug(PLUGIN_NAME, "[mp4_read_trak_atom] trak_num = %lu", trak_num-1);
 
   trak->atoms[MP4_TRAK_ATOM].buffer = TSIOBufferCreate();
   trak->atoms[MP4_TRAK_ATOM].reader = TSIOBufferReaderAlloc(trak->atoms[MP4_TRAK_ATOM].buffer);
@@ -1006,6 +1008,7 @@ Mp4Meta::mp4_read_stco_atom(int64_t atom_header_size, int64_t atom_data_size)
 
   trak         = trak_vec[trak_num - 1];
   trak->chunks = entries;
+  // entries = 16391,trak_num=0
   TSDebug(PLUGIN_NAME, "[mp4_read_stco_atom] entries = %d,trak_num=%lu", entries,trak_num-1);
   trak->atoms[MP4_STCO_ATOM].buffer = TSIOBufferCreate();
   trak->atoms[MP4_STCO_ATOM].reader = TSIOBufferReaderAlloc(trak->atoms[MP4_STCO_ATOM].buffer);
