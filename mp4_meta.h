@@ -509,6 +509,11 @@ public:
       chunk_samples(0),
       chunk_samples_size(0),
       start_offset(0),
+      end_sample(0),
+      end_chunk(0),
+      end_chunk_samples(0),
+      end_chunk_samples_size(0),
+      end_offset(0),
       tkhd_size(0),
       mdhd_size(0),
       hdlr_size(0),
@@ -539,6 +544,12 @@ public:
   uint64_t chunk_samples_size;
   off_t start_offset;
 
+  uint32_t end_sample;
+  uint32_t end_chunk;
+  uint32_t end_chunk_samples;
+  uint64_t end_chunk_samples_size;
+  off_t end_offset;
+
   size_t tkhd_size;//track header box size
   size_t mdhd_size;//media header box size
   size_t hdlr_size;//handler reference box size
@@ -565,6 +576,7 @@ public:
       wait_next(0),
       need_size(0),
       rs(0),
+      end_rs(0),
       rate(0),
       ftyp_size(0),
       moov_size(0),
@@ -657,9 +669,13 @@ public:
   void mp4_update_tkhd_duration(Mp4Trak *trak);
   void mp4_update_mdhd_duration(Mp4Trak *trak);
 
+  int mp4_crop_stts_data_start(Mp4Trak *trak);
+  int mp4_crop_stts_data_end(Mp4Trak *trak);
+
 public:
   int64_t start;          // requested start time, measured in milliseconds.
   int64_t end;
+  int64_t length;         // end - start
   int64_t cl;             // the total size of the mp4 file
   int64_t content_length; // the size of the new mp4 file
   int64_t meta_atom_size;
@@ -681,7 +697,8 @@ public:
 
   Mp4Trak *trak_vec[MP4_MAX_TRAK_NUM];
 
-  double rs; //丢弃了多少时间
+  double rs; //开始丢弃了多少时间
+  double end_rs; //结束丢弃了多少时间
   double rate;
 
   int64_t ftyp_size;

@@ -66,6 +66,15 @@ public:
 
     mm.start = offset * 1000;
     mm.end =   end_offset * 1000;
+    if (mm.end > 0) {
+      if (mm.start < 0) {
+        mm.start = 0;
+      }
+
+      if (mm.end > mm.start) {
+        mm.length = mm.end - mm.start;
+      }
+    }
     mm.cl    = cl;
   }
 
