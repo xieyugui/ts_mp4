@@ -1137,7 +1137,7 @@ found:
     old_sample = start_sample;//已经检查过的sample
     //到 Sync Sample Box 找最适合的关键帧  返回sample序号
     key_sample = this->mp4_find_key_sample(start_sample, trak); // find the last key frame before start_sample
-
+    TSDebug(PLUGIN_NAME, "[mp4_crop_stts_data_end] key_sample= %lu", key_sample);
     if (old_sample != key_sample) {
         start_sample = key_sample - 1;
     }
@@ -1197,8 +1197,8 @@ int Mp4Meta::mp4_crop_stts_data_end(Mp4Trak *trak)
     uint32_t end_sample, left;
     uint32_t key_sample, old_sample;
     uint64_t end_time, sum;
-    int64_t atom_size;
-    TSIOBufferReader readerp, end_readerp;
+    int64_t atom_size, avail, copy_avail;
+    TSIOBufferReader readerp;
 
     TSDebug(PLUGIN_NAME, "[mp4_crop_stts_data_end] --------------------------start-------------------------");
     if (this->length <= 0) {
@@ -1247,10 +1247,10 @@ int Mp4Meta::mp4_crop_stts_data_end(Mp4Trak *trak)
 
     old_sample = end_sample;//已经检查过的sample
     //到 Sync Sample Box 找最适合的关键帧  返回sample序号
-    key_sample = this->mp4_find_key_sample(end_sample, trak); // find the last key frame before start_sample
-
+    key_sample = this->mp4_find_key_sample(end_sample+trak->start_sample, trak); // find the last key frame before start_sample
+    TSDebug(PLUGIN_NAME, "[mp4_crop_stts_data_end] key_sample= %lu", key_sample);
     if (old_sample != key_sample) {
-        end_sample = key_sample - 1;
+        end_sample = key_sample - trak->start_sample;
     }
     TSDebug(PLUGIN_NAME, "[mp4_crop_stts_data_end] start_sample= %lu", end_sample);
     readerp = TSIOBufferReaderClone(trak->atoms[MP4_STTS_DATA].reader);
@@ -1294,12 +1294,17 @@ int Mp4Meta::mp4_crop_stts_data_end(Mp4Trak *trak)
     mp4_reader_set_32value(trak->atoms[MP4_STTS_ATOM].reader, offsetof(mp4_stts_atom, size), atom_size);
     mp4_reader_set_32value(trak->atoms[MP4_STTS_ATOM].reader, offsetof(mp4_stts_atom, entries), left);
 
+    avail = TSIOBufferReaderAvail(trak->atoms[MP4_STTS_DATA].reader);
+    TSDebug(PLUGIN_NAME, "[mp4_crop_stts_data_end] MP4_STTS_DATA avail=%ld", avail);
+    TSIOBufferCopy(this->copy_buffer, trak->atoms[MP4_STTS_DATA].reader, left * sizeof(mp4_stts_entry), 0);
+    TSIOBufferReaderConsume(trak->atoms[MP4_STTS_DATA].reader, avail);
+    copy_avail = TSIOBufferReaderAvail(copy_reader);
+    TSDebug(PLUGIN_NAME, "[mp4_crop_stts_data_end] MP4_STTS_DATA copy_avail=%ld", copy_avail);
+    TSIOBufferCopy(trak->atoms[MP4_STTS_DATA].buffer, copy_reader, copy_avail, 0);
+    TSIOBufferReaderConsume(copy_reader, copy_avail);
+
     TSDebug(PLUGIN_NAME, "[mp4_crop_stts_data_end] MP4_STTS_DATA=%ld", TSIOBufferReaderAvail(trak->atoms[MP4_STTS_DATA].reader));
-    end_readerp      = TSIOBufferReaderClone(trak->atoms[MP4_STTS_DATA].reader);
-    TSIOBufferReaderConsume(trak->atoms[MP4_STTS_DATA].reader,TSIOBufferReaderAvail(trak->atoms[MP4_STTS_DATA].reader));
-    TSIOBufferCopy(trak->atoms[MP4_STTS_DATA].buffer, end_readerp, left * sizeof(mp4_stts_entry), 0);
-    TSDebug(PLUGIN_NAME, "[mp4_crop_stts_data_end] MP4_STTS_DATA=%ld", TSIOBufferReaderAvail(trak->atoms[MP4_STTS_DATA].reader));
-    TSIOBufferReaderFree(end_readerp);
+
     TSIOBufferReaderFree(readerp);
     TSDebug(PLUGIN_NAME, "[mp4_crop_stts_data_end] --------------------------end-------------------------");
     return 0;

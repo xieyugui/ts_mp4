@@ -590,6 +590,9 @@ public:
     memset(trak_vec, 0, sizeof(trak_vec));
     meta_buffer = TSIOBufferCreate();
     meta_reader = TSIOBufferReaderAlloc(meta_buffer);
+
+      copy_buffer = TSIOBufferCreate();
+      copy_reader = TSIOBufferReaderAlloc(copy_buffer);
   }
 
   ~Mp4Meta()
@@ -608,6 +611,16 @@ public:
       TSIOBufferDestroy(meta_buffer);
       meta_buffer = NULL;
     }
+
+      if (copy_reader) {
+          TSIOBufferReaderFree(copy_reader);
+          copy_reader = NULL;
+      }
+
+      if (copy_buffer) {
+          TSIOBufferDestroy(copy_buffer);
+          copy_buffer = NULL;
+      }
   }
 
   int parse_meta(bool body_complete);
@@ -682,6 +695,9 @@ public:
 
   TSIOBuffer meta_buffer; // meta data to be parsed
   TSIOBufferReader meta_reader;
+
+  TSIOBuffer copy_buffer; // 临时容器
+  TSIOBufferReader copy_reader;
 
   int64_t meta_avail;
   int64_t wait_next;
