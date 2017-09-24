@@ -200,6 +200,8 @@ Mp4Meta::post_process_meta()
 
       if ((this->end > 0) && end_offset < trak->end_offset) {
           end_offset = trak->end_offset;
+          if (start_offset > end_offset)
+              end_offset = 0;
       }
       TSDebug(PLUGIN_NAME, "[post_process_meta] start_offset = %ld, end_offset=%ld", start_offset,end_offset);
 
@@ -1215,6 +1217,12 @@ int Mp4Meta::mp4_crop_stts_data_end(Mp4Trak *trak)
     entries    = trak->time_to_sample_entries;
     //time = duration / timescale      duration = time * timescale / 1000 (将start 毫秒转为秒)
     end_time = this->end * trak->timescale / 1000;
+    TSDebug(PLUGIN_NAME, "[mp4_crop_stts_data_end] end_time= %lu, trak->duration=%ld",end_time,trak->duration);
+//    if (end_time >= trak->duration){//如果大于总时长
+//        this->end = 0;
+//        return 0;
+//    }
+
     if (this->end_rs > 0) {
         end_time = (uint64_t)(this->end_rs * trak->timescale / 1000);
     }
@@ -1241,6 +1249,10 @@ int Mp4Meta::mp4_crop_stts_data_end(Mp4Trak *trak)
         end_time -= (uint64_t)count * duration; //还剩多少时间
         TSIOBufferReaderConsume(readerp, sizeof(mp4_stts_entry)); //丢弃
     }
+
+    this->end = 0;
+    TSIOBufferReaderFree(readerp);
+
 
     found:
 
@@ -1592,7 +1604,7 @@ Mp4Meta::mp4_crop_stsc_data_start(Mp4Trak *trak)
         chunk   = next_chunk;
         samples = mp4_reader_get_32value(readerp, offsetof(mp4_stsc_entry, samples));
         id      = mp4_reader_get_32value(readerp, offsetof(mp4_stsc_entry, id));
-        TSDebug(PLUGIN_NAME, "[mp4_crop_stsc_data_start]---for-- chunk=%lu,samples=%lu,id=%lu", chunk,samples,id);
+//        TSDebug(PLUGIN_NAME, "[mp4_crop_stsc_data_start]---for-- chunk=%lu,samples=%lu,id=%lu", chunk,samples,id);
         TSIOBufferReaderConsume(readerp, sizeof(mp4_stsc_entry));
     }
 
@@ -1712,7 +1724,7 @@ Mp4Meta::mp4_crop_stsc_data_end(Mp4Trak *trak)
         chunk   = next_chunk;
         samples = mp4_reader_get_32value(readerp, offsetof(mp4_stsc_entry, samples));
         id      = mp4_reader_get_32value(readerp, offsetof(mp4_stsc_entry, id));
-        TSDebug(PLUGIN_NAME, "[mp4_crop_stsc_data_end]---for-- chunk=%lu,samples=%lu,id=%lu", chunk,samples,id);
+//        TSDebug(PLUGIN_NAME, "[mp4_crop_stsc_data_end]---for-- chunk=%lu,samples=%lu,id=%lu", chunk,samples,id);
         TSIOBufferReaderConsume(readerp, sizeof(mp4_stsc_entry));
     }
 
@@ -1902,7 +1914,7 @@ Mp4Meta::mp4_crop_stsz_data_start(Mp4Trak *trak)
     if (trak->atoms[MP4_STSZ_DATA].buffer == nullptr) {
         return 0;
     }
-
+    TSDebug(PLUGIN_NAME, "[mp4_crop_stsz_data_start] sample_sizes_entries=%lu", trak->sample_sizes_entries);
     if (trak->start_sample > trak->sample_sizes_entries) {
         return -1;
     }
@@ -1915,16 +1927,18 @@ Mp4Meta::mp4_crop_stsz_data_start(Mp4Trak *trak)
     avail   = TSIOBufferReaderAvail(readerp);
 
     pass = trak->start_sample * sizeof(uint32_t);
-
+    TSDebug(PLUGIN_NAME, "[mp4_crop_stsz_data_start] start_sample=%ld, avail=%ld, pass=%lu",trak->start_sample, avail, pass);
     TSIOBufferReaderConsume(readerp, pass - sizeof(uint32_t) * (trak->chunk_samples));
 
     for (i = 0; i < trak->chunk_samples; i++) {
         trak->chunk_samples_size += mp4_reader_get_32value(readerp, 0);
         TSIOBufferReaderConsume(readerp, sizeof(uint32_t));
     }
-
+    TSDebug(PLUGIN_NAME, "[mp4_crop_stsz_data_end] chunk_samples_size=%lu", trak->chunk_samples_size);
     atom_size = sizeof(mp4_stsz_atom) + avail - pass;
+    TSDebug(PLUGIN_NAME, "[mp4_crop_stsz_data_end] atom_size=%ld", atom_size);
     trak->size += atom_size;
+    TSDebug(PLUGIN_NAME, "[mp4_crop_stsz_data_end] trak->size=%ld", trak->size);
 
     mp4_reader_set_32value(trak->atoms[MP4_STSZ_ATOM].reader, offsetof(mp4_stsz_atom, size), atom_size);
     mp4_reader_set_32value(trak->atoms[MP4_STSZ_ATOM].reader, offsetof(mp4_stsz_atom, entries),
@@ -1939,18 +1953,22 @@ Mp4Meta::mp4_crop_stsz_data_end(Mp4Trak *trak)
 {
     uint32_t i;
     uint32_t pass;
+    int64_t avail;
     TSIOBufferReader readerp;
 
     if (trak->atoms[MP4_STSZ_DATA].buffer == nullptr) {
         return 0;
     }
-
+    TSDebug(PLUGIN_NAME, "[mp4_crop_stsz_data_end] sample_sizes_entries=%lu", trak->sample_sizes_entries);
     if (trak->end_sample > trak->sample_sizes_entries) {
         return -1;
     }
 
     readerp = TSIOBufferReaderClone(trak->atoms[MP4_STSZ_DATA].reader);
+    avail   = TSIOBufferReaderAvail(readerp);
+
     pass = trak->end_sample * sizeof(uint32_t);
+    TSDebug(PLUGIN_NAME, "[mp4_crop_stsz_data_end] end_sample=%ld, avail=%ld, pass=%lu", trak->end_sample,avail, pass);
 
     TSIOBufferReaderConsume(readerp, pass - sizeof(uint32_t) * (trak->end_chunk_samples));
 
@@ -1958,7 +1976,7 @@ Mp4Meta::mp4_crop_stsz_data_end(Mp4Trak *trak)
         trak->end_chunk_samples_size += mp4_reader_get_32value(readerp, 0);
         TSIOBufferReaderConsume(readerp, sizeof(uint32_t));
     }
-
+    TSDebug(PLUGIN_NAME, "[mp4_crop_stsz_data_end] end_chunk_samples_size=%lu", trak->end_chunk_samples_size);
     TSIOBufferReaderFree(readerp);
     return 0;
 }
@@ -2045,7 +2063,6 @@ Mp4Meta::mp4_crop_co64_data_start(Mp4Trak *trak)
 
     mp4_reader_set_32value(trak->atoms[MP4_CO64_ATOM].reader, offsetof(mp4_co64_atom, size), atom_size);
     mp4_reader_set_32value(trak->atoms[MP4_CO64_ATOM].reader, offsetof(mp4_co64_atom, entries), trak->chunks - trak->start_chunk);
-    TSIOBufferReaderFree(readerp);
     return 0;
 }
 int
@@ -2062,10 +2079,11 @@ Mp4Meta::mp4_crop_co64_data_end(Mp4Trak *trak)
         return -1;
     }
 
-    readerp = trak->atoms[MP4_CO64_DATA].reader;
+    readerp = TSIOBufferReaderClone(trak->atoms[MP4_CO64_DATA].reader);
     avail   = TSIOBufferReaderAvail(readerp);
 
     pass      = trak->end_chunk * sizeof(uint64_t);
+
 
     TSIOBufferReaderConsume(readerp, pass);
     trak->end_offset = mp4_reader_get_64value(readerp, 0);
@@ -2126,12 +2144,13 @@ Mp4Meta::mp4_crop_stco_data_start(Mp4Trak *trak)
         return -1;
     }
 
-    if (trak->start_chunk > trak->chunks) {
-        return -1;
-    }
-
     if(this->end > 0) {
         this->mp4_crop_stco_data_end(trak);
+    }
+
+
+    if (trak->start_chunk > trak->chunks) {
+        return -1;
     }
 
     readerp = trak->atoms[MP4_STCO_DATA].reader;
@@ -2155,7 +2174,6 @@ Mp4Meta::mp4_crop_stco_data_start(Mp4Trak *trak)
 //mp4_update_stco_atom start_offset=80012616 chunks=16391, start_chunk=14967
     TSDebug(PLUGIN_NAME, "mp4_update_stco_atom start_offset=%ld chunks=%d, start_chunk=%d",
             trak->start_offset, trak->chunks, trak->start_chunk);
-    TSIOBufferReaderFree(readerp);
 
     return 0;
 }
@@ -2165,20 +2183,17 @@ Mp4Meta::mp4_crop_stco_data_end(Mp4Trak *trak)
     int64_t atom_size, avail;
     uint32_t pass;
     TSIOBufferReader readerp;
-
-    if (trak->atoms[MP4_STCO_DATA].buffer == nullptr) {
-        return -1;
-    }
+    TSDebug(PLUGIN_NAME, "----------mp4_crop_stco_data_end");
 
     if (trak->end_chunk > trak->chunks) {
         return -1;
     }
-
-    readerp = trak->atoms[MP4_STCO_DATA].reader;
+    TSDebug(PLUGIN_NAME, "[mp4_crop_stco_data_end] trak->end_chunk=%lu, trak->chunks=%lu",trak->end_chunk,trak->chunks);
+    readerp = TSIOBufferReaderClone(trak->atoms[MP4_STCO_DATA].reader);
     avail   = TSIOBufferReaderAvail(readerp);
 
     pass      = trak->end_chunk * sizeof(uint32_t);
-
+    TSDebug(PLUGIN_NAME, "[mp4_crop_stco_data_end] avail=%ld, pass=%lu",avail,pass);
     //丢弃chunk
     TSIOBufferReaderConsume(readerp, pass);
 
@@ -2304,7 +2319,7 @@ Mp4Meta::mp4_adjust_stco_atom(Mp4Trak *trak, int32_t adjustment)
 
   readerp = TSIOBufferReaderClone(trak->atoms[MP4_STCO_DATA].reader);
   avail   = TSIOBufferReaderAvail(readerp);
-
+    TSDebug(PLUGIN_NAME, "[mp4_adjust_stco_atom] avail=%ld", avail);
   for (pos = 0; pos < avail; pos += sizeof(uint32_t)) {
     offset = mp4_reader_get_32value(readerp, 0);
     offset += adjustment;
