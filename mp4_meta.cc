@@ -154,21 +154,21 @@ Mp4Meta::post_process_meta()
     if (mp4_update_stts_atom(trak) != 0) {
       return -1;
     }
-
+      TSDebug(PLUGIN_NAME, "[post_process_meta] 1 trak->size= %ld", trak->size);
     if (mp4_update_stss_atom(trak) != 0) {
       return -1;
     }
-
+      TSDebug(PLUGIN_NAME, "[post_process_meta] 2 trak->size= %ld", trak->size);
     mp4_update_ctts_atom(trak);
-
+      TSDebug(PLUGIN_NAME, "[post_process_meta] 3 trak->size= %ld", trak->size);
     if (mp4_update_stsc_atom(trak) != 0) {
       return -1;
     }
-
+      TSDebug(PLUGIN_NAME, "[post_process_meta] 4 trak->size= %ld", trak->size);
     if (mp4_update_stsz_atom(trak) != 0) {
       return -1;
     }
-
+      TSDebug(PLUGIN_NAME, "[post_process_meta] 5 trak->size= %ld", trak->size);
     if (trak->atoms[MP4_CO64_DATA].buffer) {
       if (mp4_update_co64_atom(trak) != 0) {
         return -1;
@@ -177,14 +177,18 @@ Mp4Meta::post_process_meta()
     } else if (mp4_update_stco_atom(trak) != 0) {
       return -1;
     }
-
+      TSDebug(PLUGIN_NAME, "[post_process_meta] 6 trak->size= %ld", trak->size);
     mp4_update_stbl_atom(trak);
+      TSDebug(PLUGIN_NAME, "[post_process_meta] 7 trak->size= %ld", trak->size);
     mp4_update_minf_atom(trak);
+      TSDebug(PLUGIN_NAME, "[post_process_meta] 8 trak->size= %ld", trak->size);
     trak->size += trak->mdhd_size;
     trak->size += trak->hdlr_size;
     mp4_update_mdia_atom(trak);
+      TSDebug(PLUGIN_NAME, "[post_process_meta] 9 trak->size= %ld", trak->size);
     trak->size += trak->tkhd_size;
     mp4_update_trak_atom(trak);
+      TSDebug(PLUGIN_NAME, "[post_process_meta] 10 trak->size= %ld", trak->size);
 
     this->moov_size += trak->size;//moov size = mvhd size + trak size
     TSDebug(PLUGIN_NAME, "[post_process_meta] for moov_size= %ld, trak->size= %ld", this->moov_size, trak->size);
@@ -197,8 +201,7 @@ Mp4Meta::post_process_meta()
       if ((this->end > 0) && end_offset < trak->end_offset) {
           end_offset = trak->end_offset;
       }
-
-      TSDebug(PLUGIN_NAME, "[post_process_meta] start_offset = %ld, end_offset=%ld", end_offset);
+      TSDebug(PLUGIN_NAME, "[post_process_meta] start_offset = %ld, end_offset=%ld", start_offset,end_offset);
 
     for (j = 0; j <= MP4_LAST_ATOM; j++) {
       if (trak->atoms[j].buffer) {
@@ -1604,8 +1607,8 @@ Mp4Meta::mp4_crop_stsc_data_start(Mp4Trak *trak)
     found:
 
     TSIOBufferReaderFree(readerp);
-    TSDebug(PLUGIN_NAME, "[mp4_crop_stsc_data_start] start_sample=%lu, next_chunk=%lu, chunk=%lu,samples=%lu,id=%lu",
-            start_sample,next_chunk,chunk,samples,id);
+    TSDebug(PLUGIN_NAME, "[mp4_crop_stsc_data_start] start_sample=%lu, next_chunk=%lu, chunk=%lu,samples=%lu",
+            start_sample,next_chunk,chunk,samples);
     entries = trak->sample_to_chunk_entries - i + 1;
     if (samples == 0) {
         return -1;
@@ -1724,8 +1727,8 @@ Mp4Meta::mp4_crop_stsc_data_end(Mp4Trak *trak)
     found:
 
     TSIOBufferReaderFree(readerp);
-    TSDebug(PLUGIN_NAME, "[mp4_crop_stsc_data_end] end_sample=%lu, next_chunk=%lu, chunk=%lu,samples=%lu,id=%lu",
-            end_sample,next_chunk,chunk,samples,id);
+    TSDebug(PLUGIN_NAME, "[mp4_crop_stsc_data_end] end_sample=%lu, next_chunk=%lu, chunk=%lu,samples=%lu",
+            end_sample,next_chunk,chunk,samples);
     if (samples == 0) {
         return -1;
     }
@@ -2042,7 +2045,7 @@ Mp4Meta::mp4_crop_co64_data_start(Mp4Trak *trak)
 
     mp4_reader_set_32value(trak->atoms[MP4_CO64_ATOM].reader, offsetof(mp4_co64_atom, size), atom_size);
     mp4_reader_set_32value(trak->atoms[MP4_CO64_ATOM].reader, offsetof(mp4_co64_atom, entries), trak->chunks - trak->start_chunk);
-
+    TSIOBufferReaderFree(readerp);
     return 0;
 }
 int
@@ -2067,7 +2070,7 @@ Mp4Meta::mp4_crop_co64_data_end(Mp4Trak *trak)
     TSIOBufferReaderConsume(readerp, pass);
     trak->end_offset = mp4_reader_get_64value(readerp, 0);
     trak->end_offset += trak->end_chunk_samples_size;
-
+    TSIOBufferReaderFree(readerp);
     return 0;
 }
 
@@ -2152,6 +2155,8 @@ Mp4Meta::mp4_crop_stco_data_start(Mp4Trak *trak)
 //mp4_update_stco_atom start_offset=80012616 chunks=16391, start_chunk=14967
     TSDebug(PLUGIN_NAME, "mp4_update_stco_atom start_offset=%ld chunks=%d, start_chunk=%d",
             trak->start_offset, trak->chunks, trak->start_chunk);
+    TSIOBufferReaderFree(readerp);
+
     return 0;
 }
 int
@@ -2181,6 +2186,7 @@ Mp4Meta::mp4_crop_stco_data_end(Mp4Trak *trak)
     trak->end_offset = mp4_reader_get_32value(readerp, 0);
     //然后再定位到具体的chunk 里的 sample
     trak->end_offset += trak->end_chunk_samples_size;
+    TSIOBufferReaderFree(readerp);
     return 0;
 }
 
