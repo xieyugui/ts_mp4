@@ -560,6 +560,7 @@ public:
   Mp4Meta()
     : start(0),
       end(0),
+      length(0),
       cl(0),
       content_length(0),
       meta_atom_size(0),
@@ -662,6 +663,7 @@ public:
 public:
   int64_t start;          // requested start time, measured in milliseconds.
   int64_t end;
+  int64_t length;
   int64_t cl;             // the total size of the mp4 file
   int64_t content_length; // the size of the new mp4 file
   int64_t meta_atom_size;
