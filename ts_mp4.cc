@@ -277,20 +277,23 @@ mp4_add_transform(Mp4Context *mc, TSHttpTxn txnp)
 {
   TSVConn connp;
 
-//  if (!mc)
-//    return;
-//
-//  if (mc->start >= mc->cl || (mc->start == 0 && mc->end == 0)) {
-//    return;
-//  }
-//
-//  if (mc->end >= mc->cl) {
-//      mc->end = 0;
-//  }
-//
-//  if (mc->end <= mc->start) {
-//      mc->end = 0;
-//  }
+  if (!mc)
+    return;
+
+  if (mc->start <= 0) {
+    mc->start = 0;
+  }
+  if (mc->end <= 0) {
+    mc->end = 0;
+  }
+
+  if (mc->end <= mc->start) {
+      mc->end = 0;
+  }
+
+  if(mc->start == 0 && mc->end == 0) {
+    return;
+  }
 
   if (mc->transform_added) {
     return;
@@ -447,26 +450,41 @@ mp4_transform_handler(TSCont contp, Mp4Context *mc)
     }
 
     // copy the video & audio data  后面从此地方入手，操作end
-    if (mtc->start_pos >= mtc->start_tail && mtc->start_pos <= mtc->end_tail) {
-      avail = TSIOBufferReaderAvail(mtc->res_reader);
-      need = mtc->end_tail - mtc->start_pos;
-      if(need > avail) {
-        need = avail;
-      }
+    if(mtc->end_tail > 0) {
+      if (mtc->start_pos >= mtc->start_tail && mtc->start_pos <= mtc->end_tail) {
+        avail = TSIOBufferReaderAvail(mtc->res_reader);
+        need = mtc->end_tail - mtc->start_pos;
+        if(need > avail) {
+          need = avail;
+        }
 
-      if(need > 0) {
-        TSIOBufferCopy(mtc->output.buffer, mtc->res_reader, need, 0);
-        TSIOBufferReaderConsume(mtc->res_reader, need);
-        mtc->total += need;
-        write_down = true;
-        mtc->start_pos += need;
-      }
+        if(need > 0) {
+          TSIOBufferCopy(mtc->output.buffer, mtc->res_reader, need, 0);
+          TSIOBufferReaderConsume(mtc->res_reader, need);
+          mtc->total += need;
+          write_down = true;
+          mtc->start_pos += need;
+        }
 
+      } else {
+        avail = TSIOBufferReaderAvail(mtc->res_reader);
+        TSIOBufferReaderConsume(mtc->res_reader, avail);
+      }
     } else {
-      avail = TSIOBufferReaderAvail(mtc->res_reader);
-      TSIOBufferReaderConsume(mtc->res_reader, avail);
-    }
+      if (mtc->start_pos >= mtc->start_tail) {
+        avail = TSIOBufferReaderAvail(mtc->res_reader);
 
+        if (avail > 0) {
+          TSIOBufferCopy(mtc->output.buffer, mtc->res_reader, avail, 0);
+          TSIOBufferReaderConsume(mtc->res_reader, avail);
+
+          mtc->start_pos += avail;
+          mtc->total += avail;
+          write_down = true;
+        }
+      }
+
+    }
 
   }
 
