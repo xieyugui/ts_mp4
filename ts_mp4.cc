@@ -65,16 +65,11 @@ TSRemapDoRemap(void * /* ih ATS_UNUSED */, TSHttpTxn rh, TSRemapRequestInfo *rri
   const char *method, *query, *path;
   const char *f_start, *f_end;
   int method_len, query_len, path_len;
-  size_t val_len;
-  const char *val;
-  int ret;
   float start, end;
-  char buf[1024];
-  int buf_len;
-  int left, right;
   TSMLoc ae_field, range_field;
   TSCont contp;
   Mp4Context *mc;
+  bool is_find;
 
   method = TSHttpHdrMethodGet(rri->requestBufp, rri->requestHdrp, &method_len);
   if (method != TS_HTTP_METHOD_GET) {
@@ -93,6 +88,7 @@ TSRemapDoRemap(void * /* ih ATS_UNUSED */, TSHttpTxn rh, TSRemapRequestInfo *rri
 
   start = 0;
   end = 0;
+  is_find = false;
   query = TSUrlHttpQueryGet(rri->requestBufp, rri->requestUrl, &query_len);
   TSDebug(PLUGIN_NAME, "TSRemapDoRemap query=%s!",query);
   if(!query) {
@@ -101,16 +97,21 @@ TSRemapDoRemap(void * /* ih ATS_UNUSED */, TSHttpTxn rh, TSRemapRequestInfo *rri
   }
 
   f_start = strcasestr(query, "start=");
-  if (!f_start) {
-    TSDebug(PLUGIN_NAME, "TSRemapDoRemap not found start=");
-    return TSREMAP_NO_REMAP;
+  if (f_start) {
+      start = strtod(f_start + 6, NULL);
+      is_find = true;
   }
-  start = strtod(f_start + 6, NULL);
 
-  f_end = strcasestr(query, "&end=");
+  f_end = strcasestr(query, "end=");
 
   if(f_end) {
-    end = strtod(f_end + 5, NULL);
+    end = strtod(f_end + 4, NULL);
+    is_find = true;
+  }
+
+  if (!is_find) {
+    TSDebug(PLUGIN_NAME, "TSRemapDoRemap not found start= or end=");
+    return TSREMAP_NO_REMAP;
   }
 
   TSDebug(PLUGIN_NAME, "TSRemapDoRemap start=%lf, end=%lf", start, end);
@@ -131,7 +132,7 @@ TSRemapDoRemap(void * /* ih ATS_UNUSED */, TSHttpTxn rh, TSRemapRequestInfo *rri
     TSHandleMLocRelease(rri->requestBufp, rri->requestHdrp, ae_field);
   }
 
-  // remove Range
+  // remove range
   range_field = TSMimeHdrFieldFind(rri->requestBufp, rri->requestHdrp, TS_MIME_FIELD_RANGE, TS_MIME_LEN_RANGE);
   if (range_field) {
     TSMimeHdrFieldDestroy(rri->requestBufp, rri->requestHdrp, range_field);
