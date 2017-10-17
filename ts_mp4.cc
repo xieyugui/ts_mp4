@@ -135,8 +135,10 @@ TSRemapDoRemap(void * /* ih ATS_UNUSED */, TSHttpTxn rh, TSRemapRequestInfo *rri
   // remove range
   range_field = TSMimeHdrFieldFind(rri->requestBufp, rri->requestHdrp, TS_MIME_FIELD_RANGE, TS_MIME_LEN_RANGE);
   if (range_field) {
-    TSMimeHdrFieldDestroy(rri->requestBufp, rri->requestHdrp, range_field);
-    TSHandleMLocRelease(rri->requestBufp, rri->requestHdrp, range_field);
+      TSDebug(PLUGIN_NAME, "TSRemapDoRemap range request");
+      return TSREMAP_NO_REMAP;
+//    TSMimeHdrFieldDestroy(rri->requestBufp, rri->requestHdrp, range_field);
+//    TSHandleMLocRelease(rri->requestBufp, rri->requestHdrp, range_field);
   }
 
   mc    = new Mp4Context(start, end);
