@@ -115,7 +115,7 @@ public:
 class Mp4Context
 {
 public:
-  Mp4Context(float s, float e) : start(s), end(e),cl(0), mtc(NULL), transform_added(false){};
+  Mp4Context(float s, float e, bool r_tag) : start(s), end(e), range_tag(r_tag), cl(0), real_cl(0),mtc(NULL), transform_added(false){};
 
   ~Mp4Context()
   {
@@ -128,7 +128,9 @@ public:
 public:
   float start;
   float end;
+  bool range_tag;
   int64_t cl;
+  int64_t real_cl;
 
   Mp4TransformContext *mtc;
 
