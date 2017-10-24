@@ -309,6 +309,7 @@ handle_client_send_response(Mp4Context *mc, TSHttpTxn txnp)
         if (TS_HTTP_STATUS_OK == status && mc->real_cl > 0) {
             TSDebug(PLUGIN_NAME, "Got TS_HTTP_STATUS_OK.");
             TSHttpHdrStatusSet(response, resp_hdr, TS_HTTP_STATUS_PARTIAL_CONTENT);
+            TSHttpHdrReasonSet(response, resp_hdr, "Partial Content", 15);
             TSDebug(PLUGIN_NAME, "Set response header to TS_HTTP_STATUS_PARTIAL_CONTENT.");
 
             char cl_buff[64];
