@@ -69,7 +69,8 @@ TSRemapDoRemap(void * /* ih ATS_UNUSED */, TSHttpTxn rh, TSRemapRequestInfo *rri
   TSMLoc ae_field, range_field;
   TSCont contp;
   Mp4Context *mc;
-  bool is_find;
+  bool start_find;
+  bool end_find;
 
   method = TSHttpHdrMethodGet(rri->requestBufp, rri->requestHdrp, &method_len);
   if (method != TS_HTTP_METHOD_GET) {
@@ -88,42 +89,75 @@ TSRemapDoRemap(void * /* ih ATS_UNUSED */, TSHttpTxn rh, TSRemapRequestInfo *rri
 
   start = 0;
   end = 0;
-  is_find = false;
+  start_find = false;
+  end_find = false;
   query = TSUrlHttpQueryGet(rri->requestBufp, rri->requestUrl, &query_len);
   TSDebug(PLUGIN_NAME, "TSRemapDoRemap query=%s!",query);
-  if(!query) {
-    TSDebug(PLUGIN_NAME, "TSRemapDoRemap query is null!");
-    return TSREMAP_NO_REMAP;
-  }
+    if(!query || query_len > 1024) {
+        TSDebug(PLUGIN_NAME, "TSRemapDoRemap query is null or len > 1024!");
+        return TSREMAP_NO_REMAP;
+    }
+    char *startptr, *endptr;
 
-  f_start = strcasestr(query, "start=");
-  if (f_start) {
-      start = strtod(f_start + 6, NULL);
-      is_find = true;
-  }
+    char no_start_buf[1025], no_end_buf[1025];
+    const char *end_static_query;
+    int buf_len, end_buf_len;
+    f_start = strcasestr(query, "&start=");
+    if(f_start) {
+        start = strtoul(f_start + 7, &startptr, 10);
+        buf_len = sprintf(no_start_buf, "%.*s%.*s", f_start-query, query, query_len - (startptr-query),startptr);
+        start_find = true;
+    } else {
+        f_start = strcasestr(query, "start=");
+        if (f_start) {
+            start = strtoul(f_start + 6, &startptr, 10);
+            buf_len = sprintf(no_start_buf, "%.*s%.*s", f_start-query, query, query_len - (startptr-query),startptr);
+            start_find = true;
+        }
+    }
 
-  f_end = strcasestr(query, "end=");
+    if(start_find) {
+        end_static_query = no_start_buf;
+    } else {
+        end_static_query = query;
+        buf_len = query_len;
+    }
 
-  if(f_end) {
-    end = strtod(f_end + 4, NULL);
-    is_find = true;
-  }
 
-  if (!is_find) {
-    TSDebug(PLUGIN_NAME, "TSRemapDoRemap not found start= or end=");
-    return TSREMAP_NO_REMAP;
-  }
+    f_end = strcasestr(end_static_query, "&end=");
+    if(f_end) {
+        end = strtoul(f_end + 5, &endptr, 10);
+        end_buf_len = sprintf(no_end_buf, "%.*s%.*s", f_end-end_static_query, end_static_query, buf_len - (endptr-end_static_query),endptr);
+        end_find = true;
+    } else {
+        f_end = strcasestr(query, "end=");
+        if (f_end) {
+            end = strtoul(f_end + 4, &endptr, 10);
+            end_buf_len = sprintf(no_end_buf, "%.*s%.*s", f_end-end_static_query, end_static_query, buf_len - (endptr-end_static_query),endptr);
+            end_find = true;
+        }
+    }
+
+
+    if (!start_find && !end_find) {
+        TSDebug(PLUGIN_NAME, "TSRemapDoRemap not found start= or end=");
+        return TSREMAP_NO_REMAP;
+    }
+
+    if (end_find) {
+        TSDebug(PLUGIN_NAME, "TSRemapDoRemap end_buf_len=%d, no_end_buf=%s!", end_buf_len, no_end_buf);
+        TSUrlHttpQuerySet(rri->requestBufp, rri->requestUrl, no_end_buf, end_buf_len);
+
+    } else if(start_find) {
+        TSDebug(PLUGIN_NAME, "TSRemapDoRemap buf_len = %ld, no_start_buf=%s!",buf_len, no_start_buf);
+        TSUrlHttpQuerySet(rri->requestBufp, rri->requestUrl, no_start_buf, buf_len);
+    }
 
   TSDebug(PLUGIN_NAME, "TSRemapDoRemap start=%lf, end=%lf", start, end);
   if (start < 0 || end < 0 || (start > 0 && end > 0 && start >= end)) {
     return TSREMAP_NO_REMAP;
   }
 
-
-  //remove query
-//  if (TSUrlHttpQuerySet(rri->requestBufp, rri->requestUrl, "", -1) == TS_ERROR) {
-//    return TSREMAP_NO_REMAP;
-//  }
 
   // remove Accept-Encoding
   ae_field = TSMimeHdrFieldFind(rri->requestBufp, rri->requestHdrp, TS_MIME_FIELD_ACCEPT_ENCODING, TS_MIME_LEN_ACCEPT_ENCODING);
