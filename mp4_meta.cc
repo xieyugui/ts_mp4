@@ -2554,10 +2554,10 @@ Mp4Meta::mp4_update_mdhd_duration(Mp4Trak *trak)
     end_cut = 0;
     if(this->end > 0) {
         if (this->end_rs > 0) {
-            end_cut = (uint64_t)(this->end_rs * this->timescale / 1000);
+            end_cut = (uint64_t)(this->end_rs * trak->timescale / 1000);
 
         } else {
-            end_cut = this->end * this->timescale / 1000;
+            end_cut = this->end * trak->timescale / 1000;
         }
     }
 

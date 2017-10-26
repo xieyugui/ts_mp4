@@ -297,10 +297,9 @@ set_header(TSMBuffer bufp, TSMLoc hdr_loc, const char *header, int len, const ch
  * replying to the client that requested a range.
  */
 static void
-handle_client_send_response(Mp4Context *mc, TSHttpTxn txnp)
-{
+handle_client_send_response(Mp4Context *mc, TSHttpTxn txnp) {
     TSMBuffer response;
-    TSMLoc resp_hdr;
+    TSMLoc resp_hdr, field_loc;
 
     TSReturnCode result = TSHttpTxnClientRespGet(txnp, &response, &resp_hdr);
     TSDebug(PLUGIN_NAME, "result: %d", result);
@@ -309,19 +308,21 @@ handle_client_send_response(Mp4Context *mc, TSHttpTxn txnp)
         if (TS_HTTP_STATUS_OK == status && mc->real_cl > 0) {
             TSDebug(PLUGIN_NAME, "Got TS_HTTP_STATUS_OK.");
             TSHttpHdrStatusSet(response, resp_hdr, TS_HTTP_STATUS_PARTIAL_CONTENT);
-            TSHttpHdrReasonSet(response, resp_hdr, "Partial Content", 15);
+            TSHttpHdrReasonSet(response, resp_hdr, TSHttpHdrReasonLookup(TS_HTTP_STATUS_PARTIAL_CONTENT),
+                               strlen(TSHttpHdrReasonLookup(TS_HTTP_STATUS_PARTIAL_CONTENT)));
             TSDebug(PLUGIN_NAME, "Set response header to TS_HTTP_STATUS_PARTIAL_CONTENT.");
 
             char cl_buff[64];
             int length;
             //bytes 0-2380/2381
-            length = sprintf(cl_buff, "bytes 0-%lld/%lld", mc->real_cl-1, mc->real_cl);
-            cl_buff[length] = '\0';
-            if (set_header(response, resp_hdr, TS_MIME_FIELD_CONTENT_RANGE, TS_MIME_LEN_CONTENT_RANGE, cl_buff, length)) {
-                TSDebug(PLUGIN_NAME, "added range header: %s", mc->real_cl);
-            } else {
-                TSDebug(PLUGIN_NAME, "set_header() failed.");
-            }
+            length = sprintf(cl_buff, "bytes 0-%lld/%lld", mc->real_cl - 1, mc->real_cl);
+            TSMimeHdrFieldCreate(response, resp_hdr, &field_loc); // Probably should check for errors
+            TSMimeHdrFieldNameSet(response, resp_hdr, field_loc, TS_MIME_FIELD_CONTENT_RANGE,
+                                  TS_MIME_LEN_CONTENT_RANGE);
+            TSMimeHdrFieldValueStringInsert(response, resp_hdr, field_loc, -1, cl_buff, length);
+            TSMimeHdrFieldAppend(response, resp_hdr, field_loc);
+
+            TSHandleMLocRelease(response, resp_hdr, field_loc);
         }
     }
     TSHandleMLocRelease(response, resp_hdr, nullptr);
