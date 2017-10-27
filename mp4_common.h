@@ -30,111 +30,106 @@
 #include <ts/remap.h>
 #include "mp4_meta.h"
 
-class IOHandle
-{
+class IOHandle {
 public:
-  IOHandle() : vio(NULL), buffer(NULL), reader(NULL){};
+    IOHandle() : vio(NULL), buffer(NULL), reader(NULL) {};
 
-  ~IOHandle()
-  {
-    if (reader) {
-      TSIOBufferReaderFree(reader);
-      reader = NULL;
+    ~IOHandle() {
+        if (reader) {
+            TSIOBufferReaderFree(reader);
+            reader = NULL;
+        }
+
+        if (buffer) {
+            TSIOBufferDestroy(buffer);
+            buffer = NULL;
+        }
     }
 
-    if (buffer) {
-      TSIOBufferDestroy(buffer);
-      buffer = NULL;
-    }
-  }
-
 public:
-  TSVIO vio;
-  TSIOBuffer buffer;
-  TSIOBufferReader reader;
+    TSVIO vio;
+    TSIOBuffer buffer;
+    TSIOBufferReader reader;
 };
 
-class Mp4TransformContext
-{
+class Mp4TransformContext {
 public:
-  Mp4TransformContext(float offset, float end_offset, int64_t cl)
-    : total(0), start_tail(0), end_tail(0), start_pos(0), end_pos(0), content_length(0), meta_length(0), parse_over(false), raw_transform(false)
-  {
-    res_buffer = TSIOBufferCreate();
-    res_reader = TSIOBufferReaderAlloc(res_buffer);
-    dup_reader = TSIOBufferReaderAlloc(res_buffer);
+    Mp4TransformContext(float offset, float end_offset, int64_t cl)
+            : total(0), start_tail(0), end_tail(0), start_pos(0), end_pos(0), content_length(0), meta_length(0),
+              parse_over(false), raw_transform(false) {
+        res_buffer = TSIOBufferCreate();
+        res_reader = TSIOBufferReaderAlloc(res_buffer);
+        dup_reader = TSIOBufferReaderAlloc(res_buffer);
 
-    mm.start = offset * 1000;
-    mm.end =   end_offset * 1000;
-    if (mm.end > 0) {
-      if (mm.start < 0) {
-        mm.start = 0;
-      }
+        mm.start = offset * 1000;
+        mm.end = end_offset * 1000;
+        if (mm.end > 0) {
+            if (mm.start < 0) {
+                mm.start = 0;
+            }
 
-      if (mm.end > mm.start) {
-        mm.length = mm.end - mm.start;
-      }
-    }
-    mm.cl    = cl;
-  }
-
-  ~Mp4TransformContext()
-  {
-    if (res_reader) {
-      TSIOBufferReaderFree(res_reader);
+            if (mm.end > mm.start) {
+                mm.length = mm.end - mm.start;
+            }
+        }
+        mm.cl = cl;
     }
 
-    if (dup_reader) {
-      TSIOBufferReaderFree(dup_reader);
-    }
+    ~Mp4TransformContext() {
+        if (res_reader) {
+            TSIOBufferReaderFree(res_reader);
+        }
 
-    if (res_buffer) {
-      TSIOBufferDestroy(res_buffer);
+        if (dup_reader) {
+            TSIOBufferReaderFree(dup_reader);
+        }
+
+        if (res_buffer) {
+            TSIOBufferDestroy(res_buffer);
+        }
     }
-  }
 
 public:
-  IOHandle output;
-  Mp4Meta mm;
-  int64_t total;
-  int64_t start_tail;
-  int64_t end_tail;
-  int64_t start_pos;//start 起始结束丢弃的位置
-  int64_t end_pos; //end 丢弃的位置
-  int64_t content_length;
-  int64_t meta_length;
+    IOHandle output;
+    Mp4Meta mm;
+    int64_t total;
+    int64_t start_tail;
+    int64_t end_tail;
+    int64_t start_pos;//start 起始结束丢弃的位置
+    int64_t end_pos; //end 丢弃的位置
+    int64_t content_length;
+    int64_t meta_length;
 
-  TSIOBuffer res_buffer;
-  TSIOBufferReader res_reader;
-  TSIOBufferReader dup_reader;
+    TSIOBuffer res_buffer;
+    TSIOBufferReader res_reader;
+    TSIOBufferReader dup_reader;
 
-  bool parse_over;
-  bool raw_transform;
+    bool parse_over;
+    bool raw_transform;
 };
 
-class Mp4Context
-{
+class Mp4Context {
 public:
-  Mp4Context(float s, float e, bool r_tag) : start(s), end(e), range_tag(r_tag), cl(0), real_cl(0),mtc(NULL), transform_added(false){};
+    Mp4Context(float s, float e, bool r_tag) : start(s), end(e), range_tag(r_tag), cl(0), real_cl(0), mtc(NULL),
+                                               transform_added(false) {};
 
-  ~Mp4Context()
-  {
-    if (mtc) {
-      delete mtc;
-      mtc = NULL;
+    ~Mp4Context() {
+        if (mtc) {
+            delete mtc;
+            mtc = NULL;
+        }
     }
-  }
 
 public:
-  float start;
-  float end;
-  bool range_tag;
-  int64_t cl;
-  int64_t real_cl;
+    float start;
+    float end;
+    bool range_tag;
+    int64_t cl;
+    int64_t real_cl;
 
-  Mp4TransformContext *mtc;
+    Mp4TransformContext *mtc;
 
-  bool transform_added;
+    bool transform_added;
 };
 
 #endif
