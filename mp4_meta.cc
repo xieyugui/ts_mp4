@@ -2007,14 +2007,6 @@ Mp4Meta::mp4_update_stsc_atom(Mp4Trak *trak) {
     }
     TSIOBufferReaderFree(readerp);
 
-//    all_length = trak->stsc_last - trak->stsc_pos;
-//    if (trak->atoms[MP4_STSC_CHUNK_START].buffer != nullptr) {
-//        all_length++;
-//    }
-//    if (trak->atoms[MP4_STSC_CHUNK_END].buffer != nullptr) {
-//        all_length++;
-//    }
-
 
     atom_size = sizeof(mp4_stsc_atom) + trak->sample_to_chunk_entries * sizeof(mp4_stsc_entry);
 
@@ -2038,22 +2030,11 @@ Mp4Meta::mp4_update_stsc_atom(Mp4Trak *trak) {
         new_avail = avail;
     TSDebug(PLUGIN_NAME, "[mp4_update_stsc_atom] avail=%lld, new_avail=%lld", avail, new_avail);
 
-//    if (trak->atoms[MP4_STSC_CHUNK_START].buffer != nullptr) {
-//        TSIOBufferCopy(copy_buffer, trak->atoms[MP4_STSC_CHUNK_START].reader, sizeof(mp4_stsc_entry), 0);
-//    }
 
     TSIOBufferCopy(copy_buffer, trak->atoms[MP4_STSC_DATA].reader, new_avail, 0);
     TSIOBufferReaderConsume(trak->atoms[MP4_STSC_DATA].reader, avail);
     TSIOBufferCopy(trak->atoms[MP4_STSC_DATA].buffer, copy_reader, new_avail, 0);
-//    if (trak->atoms[MP4_STSC_CHUNK_START].buffer != nullptr) {
-//        TSIOBufferCopy(trak->atoms[MP4_STSC_DATA].buffer, copy_reader, new_avail + sizeof(mp4_stsc_entry), 0);
-//    } else {
-//        TSIOBufferCopy(trak->atoms[MP4_STSC_DATA].buffer, copy_reader, new_avail, 0);
-//    }
-//
-//    if (trak->atoms[MP4_STSC_CHUNK_END].buffer != nullptr) {
-//        TSIOBufferCopy(trak->atoms[MP4_STSC_DATA].buffer, trak->atoms[MP4_STSC_CHUNK_END].reader, sizeof(mp4_stsc_entry), 0);
-//    }
+
 
     TSDebug(PLUGIN_NAME, "[mp4_update_stsc_atom] avail=%lld", TSIOBufferReaderAvail(trak->atoms[MP4_STSC_DATA].reader));
 
