@@ -98,9 +98,9 @@ TSRemapDoRemap(void * /* ih ATS_UNUSED */, TSHttpTxn rh, TSRemapRequestInfo *rri
     start_find = false;
     end_find = false;
     query = TSUrlHttpQueryGet(rri->requestBufp, rri->requestUrl, &query_len);
-    TSDebug(PLUGIN_NAME, "TSRemapDoRemap query=%.*s!", query_len, query);
+//    TSDebug(PLUGIN_NAME, "TSRemapDoRemap query=%.*s!", query_len, query);
     if (!query || query_len > 1024) {
-        TSDebug(PLUGIN_NAME, "TSRemapDoRemap query is null or len > 1024!");
+//        TSDebug(PLUGIN_NAME, "TSRemapDoRemap query is null or len > 1024!");
         return TSREMAP_NO_REMAP;
     }
     char *startptr, *endptr;
@@ -154,11 +154,11 @@ TSRemapDoRemap(void * /* ih ATS_UNUSED */, TSHttpTxn rh, TSRemapRequestInfo *rri
     }
 
     if (end_find) {
-        TSDebug(PLUGIN_NAME, "TSRemapDoRemap end_buf_len=%d, no_end_buf=%s!", end_buf_len, no_end_buf);
+//        TSDebug(PLUGIN_NAME, "TSRemapDoRemap end_buf_len=%d, no_end_buf=%s!", end_buf_len, no_end_buf);
         TSUrlHttpQuerySet(rri->requestBufp, rri->requestUrl, no_end_buf, end_buf_len);
 
     } else if (start_find) {
-        TSDebug(PLUGIN_NAME, "TSRemapDoRemap buf_len = %ld, no_start_buf=%s!", buf_len, no_start_buf);
+//        TSDebug(PLUGIN_NAME, "TSRemapDoRemap buf_len = %ld, no_start_buf=%s!", buf_len, no_start_buf);
         TSUrlHttpQuerySet(rri->requestBufp, rri->requestUrl, no_start_buf, buf_len);
     }
 
@@ -223,21 +223,21 @@ mp4_handler(TSCont contp, TSEvent event, void *edata) {
     switch (event) {
         case TS_EVENT_HTTP_CACHE_LOOKUP_COMPLETE:
             mp4_cache_lookup_complete(mc, txnp);
-            TSDebug(PLUGIN_NAME, "\tEvent is TS_EVENT_HTTP_CACHE_LOOKUP_COMPLETE");
+//            TSDebug(PLUGIN_NAME, "\tEvent is TS_EVENT_HTTP_CACHE_LOOKUP_COMPLETE");
             break;
 
         case TS_EVENT_HTTP_READ_RESPONSE_HDR:
             mp4_read_response(mc, txnp);
-            TSDebug(PLUGIN_NAME, "\tEvent is TS_EVENT_HTTP_READ_RESPONSE_HDR");
+//            TSDebug(PLUGIN_NAME, "\tEvent is TS_EVENT_HTTP_READ_RESPONSE_HDR");
             break;
         case TS_EVENT_HTTP_SEND_RESPONSE_HDR:
             if (mc->range_tag) {
                 handle_client_send_response(mc, txnp);
             }
-            TSDebug(PLUGIN_NAME, "\tEvent is TS_EVENT_HTTP_SEND_RESPONSE_HDR");
+//            TSDebug(PLUGIN_NAME, "\tEvent is TS_EVENT_HTTP_SEND_RESPONSE_HDR");
             break;
         case TS_EVENT_HTTP_TXN_CLOSE:
-            TSDebug(PLUGIN_NAME, "TS_EVENT_HTTP_TXN_CLOSE");
+//            TSDebug(PLUGIN_NAME, "TS_EVENT_HTTP_TXN_CLOSE");
             delete mc;
             TSContDestroy(contp);
             break;
@@ -250,52 +250,6 @@ mp4_handler(TSCont contp, TSEvent event, void *edata) {
     return 0;
 }
 
-/**
- * Set a header to a specific value. This will avoid going to through a
- * remove / add sequence in case of an existing header.
- * but clean.
- *
- * From background_fetch.cc
- */
-static bool
-set_header(TSMBuffer bufp, TSMLoc hdr_loc, const char *header, int len, const char *val, int val_len) {
-    if (!bufp || !hdr_loc || !header || len <= 0 || !val || val_len <= 0) {
-        return false;
-    }
-
-    TSDebug(PLUGIN_NAME, "header: %s, len: %d, val: %s, val_len: %d", header, len, val, val_len);
-    bool ret = false;
-    TSMLoc field_loc = TSMimeHdrFieldFind(bufp, hdr_loc, header, len);
-    if (!field_loc) {
-        // No existing header, so create one
-        if (TS_SUCCESS == TSMimeHdrFieldCreateNamed(bufp, hdr_loc, header, len, &field_loc)) {
-            if (TS_SUCCESS == TSMimeHdrFieldValueStringSet(bufp, hdr_loc, field_loc, -1, val, val_len)) {
-                TSMimeHdrFieldAppend(bufp, hdr_loc, field_loc);
-                ret = true;
-            }
-            TSHandleMLocRelease(bufp, hdr_loc, field_loc);
-        }
-    } else {
-        TSMLoc tmp = nullptr;
-        bool first = true;
-
-        while (field_loc) {
-            if (first) {
-                first = false;
-                if (TS_SUCCESS == TSMimeHdrFieldValueStringSet(bufp, hdr_loc, field_loc, -1, val, val_len)) {
-                    ret = true;
-                }
-            } else {
-                TSMimeHdrFieldDestroy(bufp, hdr_loc, field_loc);
-            }
-            tmp = TSMimeHdrFieldNextDup(bufp, hdr_loc, field_loc);
-            TSHandleMLocRelease(bufp, hdr_loc, field_loc);
-            field_loc = tmp;
-        }
-    }
-
-    return ret;
-}
 
 /**
  * Changes the response code back to a 206 Partial content before
@@ -429,7 +383,7 @@ mp4_add_transform(Mp4Context *mc, TSHttpTxn txnp) {
     if (!mc)
         return;
 
-    TSDebug(PLUGIN_NAME, "[mp4_add_transformxxx] start=%lf, end=%lf, cl=%lld", mc->start, mc->end, mc->cl);
+//    TSDebug(PLUGIN_NAME, "[mp4_add_transformxxx] start=%lf, end=%lf, cl=%lld", mc->start, mc->end, mc->cl);
 
     if (mc->start <= 0) {
         mc->start = 0;
@@ -471,19 +425,19 @@ mp4_transform_entry(TSCont contp, TSEvent event, void * /* edata ATS_UNUSED */) 
 
     if (TSVConnClosedGet(contp)) {
         TSContDestroy(contp);
-        TSDebug(PLUGIN_NAME, "\tVConn is closed");
+//        TSDebug(PLUGIN_NAME, "\tVConn is closed");
         return 0;
     }
 
     switch (event) {
         case TS_EVENT_ERROR:
-            TSDebug(PLUGIN_NAME, "\tEvent is TS_EVENT_ERROR");
+//            TSDebug(PLUGIN_NAME, "\tEvent is TS_EVENT_ERROR");
             input_vio = TSVConnWriteVIOGet(contp);
             TSContCall(TSVIOContGet(input_vio), TS_EVENT_ERROR, input_vio);
             break;
 
         case TS_EVENT_VCONN_WRITE_COMPLETE:
-            TSDebug(PLUGIN_NAME, "\tEvent is TS_EVENT_VCONN_WRITE_COMPLETE");
+//            TSDebug(PLUGIN_NAME, "\tEvent is TS_EVENT_VCONN_WRITE_COMPLETE");
             TSVConnShutdown(TSTransformOutputVConnGet(contp), 0, 1);
             break;
 
@@ -519,8 +473,8 @@ mp4_transform_handler(TSCont contp, Mp4Context *mc) {
         if (mtc->output.buffer) {
             TSVIONBytesSet(mtc->output.vio, mtc->total);
             TSVIOReenable(mtc->output.vio);
-            TSDebug(PLUGIN_NAME, "[mp4_transform_handler] !input_buff Done Get=%ld, total=%ld",
-                    TSVIONDoneGet(mtc->output.vio), mtc->total);
+//            TSDebug(PLUGIN_NAME, "[mp4_transform_handler] !input_buff Done Get=%ld, total=%ld",
+//                    TSVIONDoneGet(mtc->output.vio), mtc->total);
         }
         return 1;
     }
@@ -543,9 +497,9 @@ mp4_transform_handler(TSCont contp, Mp4Context *mc) {
     write_down = false;//是否有数据写入
 
     if (!mtc->parse_over) {//解析mp4头
-        TSDebug(PLUGIN_NAME, "[mp4_transform_handler] in parse_over toread-avail=%ld", (toread - avail));
+//        TSDebug(PLUGIN_NAME, "[mp4_transform_handler] in parse_over toread-avail=%ld", (toread - avail));
         ret = mp4_parse_meta(mtc, toread <= 0);
-        TSDebug(PLUGIN_NAME, "[mp4_transform_handler] ret=%d", ret);
+//        TSDebug(PLUGIN_NAME, "[mp4_transform_handler] ret=%d", ret);
         if (ret == 0) {
             goto trans;
         }
@@ -648,8 +602,8 @@ mp4_transform_handler(TSCont contp, Mp4Context *mc) {
         TSContCall(TSVIOContGet(input_vio), TS_EVENT_VCONN_WRITE_READY, input_vio);
 
     } else {//整个流程结束
-        TSDebug(PLUGIN_NAME, "last Done Get=%ld, input_vio Done=%ld, mtc->total=%ld", TSVIONDoneGet(mtc->output.vio),
-                TSVIONDoneGet(input_vio), mtc->total);
+//        TSDebug(PLUGIN_NAME, "last Done Get=%ld, input_vio Done=%ld, mtc->total=%ld", TSVIONDoneGet(mtc->output.vio),
+//                TSVIONDoneGet(input_vio), mtc->total);
         TSVIONBytesSet(mtc->output.vio, mtc->total);
         TSContCall(TSVIOContGet(input_vio), TS_EVENT_VCONN_WRITE_COMPLETE, input_vio);
     }
@@ -688,8 +642,8 @@ mp4_parse_meta(Mp4TransformContext *mtc, bool body_complete) {
         mtc->end_tail = mm->end_pos;
         mtc->content_length = mm->content_length;
         mtc->meta_length = TSIOBufferReaderAvail(mm->out_handle.reader);
-        TSDebug(PLUGIN_NAME, "[mp4_parse_meta] start_tail=%lld, end_tail=%lld, content_length=%lld, meta_length=%lld",
-                mtc->start_tail, mtc->end_tail, mtc->content_length, mtc->meta_length);
+//        TSDebug(PLUGIN_NAME, "[mp4_parse_meta] start_tail=%lld, end_tail=%lld, content_length=%lld, meta_length=%lld",
+//                mtc->start_tail, mtc->end_tail, mtc->content_length, mtc->meta_length);
     }
 
     if (ret != 0) {
