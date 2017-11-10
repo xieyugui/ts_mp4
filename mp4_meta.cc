@@ -2067,6 +2067,31 @@ Mp4Meta::mp4_update_stsc_atom(Mp4Trak *trak) {
 
     TSDebug(PLUGIN_NAME, "[mp4_crop_stsc_data_start] ------stsc end---");
 
+//    TSDebug(PLUGIN_NAME, "[mp4_crop_stsc_data_start] ------start xieyugui start---");
+//    if (trak->atoms[MP4_STSC_CHUNK_START].buffer != nullptr) {
+//        readerp = TSIOBufferReaderClone(trak->atoms[MP4_STSC_CHUNK_START].reader);
+//        chunk = mp4_reader_get_32value(readerp, offsetof(mp4_stsc_entry, chunk));
+//        samples = mp4_reader_get_32value(readerp, offsetof(mp4_stsc_entry, samples));
+//        id = mp4_reader_get_32value(readerp, offsetof(mp4_stsc_entry, id));
+//        TSDebug(PLUGIN_NAME, "[mp4_crop_stsc_data] start xieyugui chunk:%uD, samples:%uD,id:%uD", chunk, samples, id);
+//        TSIOBufferReaderFree(readerp);
+//    }
+//    TSDebug(PLUGIN_NAME, "[mp4_crop_stsc_data_start] ------start xieyugui end---");
+//
+//
+//    TSDebug(PLUGIN_NAME, "[mp4_crop_stsc_data_start] ------end xieyugui start---");
+//
+//    if (trak->atoms[MP4_STSC_CHUNK_START].buffer != nullptr) {
+//        readerp = TSIOBufferReaderClone(trak->atoms[MP4_STSC_CHUNK_END].reader);
+//        chunk = mp4_reader_get_32value(readerp, offsetof(mp4_stsc_entry, chunk));
+//        samples = mp4_reader_get_32value(readerp, offsetof(mp4_stsc_entry, samples));
+//        id = mp4_reader_get_32value(readerp, offsetof(mp4_stsc_entry, id));
+//        TSDebug(PLUGIN_NAME, "[mp4_crop_stsc_data] end xieyugui chunk:%uD, samples:%uD,id:%uD", chunk, samples, id);
+//        TSIOBufferReaderFree(readerp);
+//    }
+//
+//    TSDebug(PLUGIN_NAME, "[mp4_crop_stsc_data_start] ------end xieyugui end---");
+
 
     return 0;
 }
