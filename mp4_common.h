@@ -110,16 +110,14 @@ public:
 
 class Mp4Context {
 public:
-    Mp4Context(float s, float e, int64_t r_start, int64_t r_end, bool r_tag) : start(s), end(e), range_start(r_start),
-                                                                               range_end(r_end),
+    Mp4Context(float s, float e, int64_t r_start, bool r_tag) : start(s), end(e), range_start(r_start),
                                                                                range_start_pos(r_start),
-                                                                               range_end_pos(r_end),
+                                                                               range_end_pos(0),
                                                                                mp4_meta_start_dup(0),
-                                                                               mp4_meta_end_dup(0),
                                                                                range_tag(r_tag),
                                                                                cl(0), real_cl(0),range_cl(0),
                                                                                mtc(NULL),
-                                                                               transform_added(false) {};
+                                                                               transform_added(false),meta_copy(false){};
 
     ~Mp4Context() {
         if (mtc) {
@@ -133,52 +131,37 @@ public:
         if (!range_tag)
             return;
         int64_t start_pos, end_pos, r_start, r_end;
-        start_pos = s_pos;//1847586
-        end_pos = e_pos;//2501131
+        start_pos = s_pos;//10676888
+        end_pos = e_pos;//43339107
 
         if (end_pos <= 0)
             end_pos = cl;
 
-        if (range_end_pos <= 0) {
-            range_end_pos = content_length;//662313
-            range_end = content_length;
-        } else { //range 大小加 1
-            range_end += 1;
-            range_end_pos += 1;
-        }
+        range_end_pos = content_length;//33310117  range_start_pos=27590656
 
-        if ((range_end_pos - range_start_pos) > content_length) {
+        if (range_start_pos >= range_end_pos || (range_end_pos - range_start_pos) > content_length) {
             range_tag = false;
             return;
         }
 
+        //转换成时间段文件的位置(start,end)
         if (range_start_pos < mp4_meta) {
             mp4_meta_start_dup = range_start_pos;
-            if (mp4_meta < range_end_pos) {
-                mp4_meta_end_dup = 0;
-                range_start_pos = start_pos;
-                range_end_pos = (range_end_pos - mp4_meta + mp4_meta_start_dup) + start_pos;
-                range_cl = range_end_pos - range_start_pos;
-            } else {
-                mp4_meta_end_dup = mp4_meta - range_end_pos;
-                range_cl = range_end_pos - range_start_pos;
-                range_start_pos = 0;
-                range_end_pos = 0;
-
-            }
+            range_cl = range_end_pos - range_start_pos;
+            range_start_pos = start_pos;
 
         } else {
-            range_start_pos = range_start_pos - mp4_meta + start_pos;
-            range_end_pos = range_end_pos - mp4_meta + start_pos;
+            mp4_meta_start_dup = mp4_meta;
             range_cl = range_end_pos - range_start_pos;
+            range_start_pos = range_start_pos - mp4_meta + start_pos;
         }
 
-        if (range_start_pos > range_end_pos || range_end_pos > end_pos) {
+        if (range_start_pos >= end_pos) {
             range_tag = false;
             return;
         }
 
-        if (range_start_pos > 0 && range_end_pos > 0 && (range_end_pos - range_start_pos) > content_length) {
+        if (range_start_pos > 0  && (end_pos - range_start_pos) > content_length) {
             range_tag = false;
             return;
         }
@@ -190,11 +173,9 @@ public:
     float start;
     float end;
     int64_t range_start;
-    int64_t range_end;
     int64_t range_start_pos;
     int64_t range_end_pos;
     int64_t mp4_meta_start_dup; //丢弃的字节
-    int64_t mp4_meta_end_dup; //丢弃的字节
     bool range_tag;
     int64_t cl;
     int64_t real_cl;//start,end的长度
@@ -203,6 +184,7 @@ public:
     Mp4TransformContext *mtc;
 
     bool transform_added;
+    bool meta_copy; //是否已经复制过
 };
 
 #endif
