@@ -6,9 +6,7 @@
   to you under the Apache License, Version 2.0 (the
   "License"); you may not use this file except in compliance
   with the License.  You may obtain a copy of the License at
-
   http://www.apache.org/licenses/LICENSE-2.0
-
   Unless required by applicable law or agreed to in writing, software
   distributed under the License is distributed on an "AS IS" BASIS,
   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -24,7 +22,7 @@ static void mp4_cache_lookup_complete(Mp4Context *mc, TSHttpTxn txnp);
 
 static void mp4_read_response(Mp4Context *mc, TSHttpTxn txnp);
 
-static void handle_client_send_response(Mp4Context *mc, TSHttpTxn txnp);
+static void mp4_client_send_response(Mp4Context *mc, TSHttpTxn txnp);
 
 static void mp4_add_transform(Mp4Context *mc, TSHttpTxn txnp);
 
@@ -70,13 +68,13 @@ TSRemapDoRemap(void * /* ih ATS_UNUSED */, TSHttpTxn rh, TSRemapRequestInfo *rri
     const char *f_start, *f_end;
     int method_len, query_len, path_len, range_len;
     float start, end;
-    bool range_tag;
     TSMLoc ae_field, range_field;
     TSCont contp;
     Mp4Context *mc;
     bool start_find;
     bool end_find;
-    int64_t range_start, range_end;
+    bool range_tag;
+    int64_t range_start;
 
     method = TSHttpHdrMethodGet(rri->requestBufp, rri->requestHdrp, &method_len);
     if (method != TS_HTTP_METHOD_GET) {
@@ -100,7 +98,7 @@ TSRemapDoRemap(void * /* ih ATS_UNUSED */, TSHttpTxn rh, TSRemapRequestInfo *rri
     query = TSUrlHttpQueryGet(rri->requestBufp, rri->requestUrl, &query_len);
 //    TSDebug(PLUGIN_NAME, "TSRemapDoRemap query=%.*s!", query_len, query);
     if (!query || query_len > 1024) {
-//        TSDebug(PLUGIN_NAME, "TSRemapDoRemap query is null or len > 1024!");
+        TSDebug(PLUGIN_NAME, "TSRemapDoRemap query is null or len > 1024!");
         return TSREMAP_NO_REMAP;
     }
     char *startptr, *endptr;
@@ -154,11 +152,9 @@ TSRemapDoRemap(void * /* ih ATS_UNUSED */, TSHttpTxn rh, TSRemapRequestInfo *rri
     }
 
     if (end_find) {
-//        TSDebug(PLUGIN_NAME, "TSRemapDoRemap end_buf_len=%d, no_end_buf=%s!", end_buf_len, no_end_buf);
         TSUrlHttpQuerySet(rri->requestBufp, rri->requestUrl, no_end_buf, end_buf_len);
 
     } else if (start_find) {
-//        TSDebug(PLUGIN_NAME, "TSRemapDoRemap buf_len = %ld, no_start_buf=%s!", buf_len, no_start_buf);
         TSUrlHttpQuerySet(rri->requestBufp, rri->requestUrl, no_start_buf, buf_len);
     }
 
@@ -177,31 +173,27 @@ TSRemapDoRemap(void * /* ih ATS_UNUSED */, TSHttpTxn rh, TSRemapRequestInfo *rri
     }
 
     //如果有range 就根据range 大小来匹配
-    //request Range: bytes=500-999
-    // remove Range   这里只实现 bytes=0-的情况
-    range_tag = false;
+    //request Range: bytes=500-
     range_start = 0;
-    range_end = 0;
+    range_tag = false;
     range_field = TSMimeHdrFieldFind(rri->requestBufp, rri->requestHdrp, TS_MIME_FIELD_RANGE, TS_MIME_LEN_RANGE);
     if (range_field) {
         range = TSMimeHdrFieldValueStringGet(rri->requestBufp, rri->requestHdrp, range_field, -1, &range_len);
         size_t b_len = sizeof("bytes=") - 1;
         if (range && (strncasecmp(range, "bytes=", b_len) == 0)) {
+            range_tag = true;
             //get range value
             range_start = (int64_t) strtol(range + b_len, NULL, 10);
-            range_separator = strchr(range, '-');
-            if (range_separator) {
-                range_end = (int64_t) strtol(range_separator + 1, NULL, 10);
-            }
-            TSDebug(PLUGIN_NAME, "TSRemapDoRemap have range, start =%lld, end=%lld ", range_start, range_end);
-            if (range_start <= 0 && range_end <= 0) {
-                range_tag = true;
-            }
+//            range_separator = strchr(range, '-');
+//            if (range_separator) {
+//                range_end = (int64_t) strtol(range_separator + 1, NULL, 10);
+//            }
+            TSDebug(PLUGIN_NAME, "TSRemapDoRemap have range, start =%lld", range_start);
         }
         TSMimeHdrFieldDestroy(rri->requestBufp, rri->requestHdrp, range_field);
         TSHandleMLocRelease(rri->requestBufp, rri->requestHdrp, range_field);
     }
-    mc = new Mp4Context(start, end, range_tag);
+    mc = new Mp4Context(start, end, range_start, range_tag);
     contp = TSContCreate(mp4_handler, nullptr);
     TSContDataSet(contp, mc);
 
@@ -223,21 +215,16 @@ mp4_handler(TSCont contp, TSEvent event, void *edata) {
     switch (event) {
         case TS_EVENT_HTTP_CACHE_LOOKUP_COMPLETE:
             mp4_cache_lookup_complete(mc, txnp);
-//            TSDebug(PLUGIN_NAME, "\tEvent is TS_EVENT_HTTP_CACHE_LOOKUP_COMPLETE");
             break;
 
         case TS_EVENT_HTTP_READ_RESPONSE_HDR:
             mp4_read_response(mc, txnp);
-//            TSDebug(PLUGIN_NAME, "\tEvent is TS_EVENT_HTTP_READ_RESPONSE_HDR");
             break;
         case TS_EVENT_HTTP_SEND_RESPONSE_HDR:
-            if (mc->range_tag) {
-                handle_client_send_response(mc, txnp);
-            }
-//            TSDebug(PLUGIN_NAME, "\tEvent is TS_EVENT_HTTP_SEND_RESPONSE_HDR");
+            if (mc->range_tag)
+                mp4_client_send_response(mc, txnp);
             break;
         case TS_EVENT_HTTP_TXN_CLOSE:
-//            TSDebug(PLUGIN_NAME, "TS_EVENT_HTTP_TXN_CLOSE");
             delete mc;
             TSContDestroy(contp);
             break;
@@ -250,13 +237,12 @@ mp4_handler(TSCont contp, TSEvent event, void *edata) {
     return 0;
 }
 
-
 /**
  * Changes the response code back to a 206 Partial content before
  * replying to the client that requested a range.
  */
 static void
-handle_client_send_response(Mp4Context *mc, TSHttpTxn txnp) {
+mp4_client_send_response(Mp4Context *mc, TSHttpTxn txnp) {
     TSMBuffer response;
     TSMLoc resp_hdr, field_loc;
 
@@ -274,7 +260,7 @@ handle_client_send_response(Mp4Context *mc, TSHttpTxn txnp) {
             char cl_buff[64];
             int length;
             //bytes 0-2380/2381
-            length = sprintf(cl_buff, "bytes 0-%lld/%lld", mc->real_cl - 1, mc->real_cl);
+            length = sprintf(cl_buff, "bytes %lld-%lld/%lld", mc->range_start, (mc->real_cl - 1), mc->real_cl);
             TSMimeHdrFieldCreate(response, resp_hdr, &field_loc); // Probably should check for errors
             TSMimeHdrFieldNameSet(response, resp_hdr, field_loc, TS_MIME_FIELD_CONTENT_RANGE,
                                   TS_MIME_LEN_CONTENT_RANGE);
@@ -383,8 +369,6 @@ mp4_add_transform(Mp4Context *mc, TSHttpTxn txnp) {
     if (!mc)
         return;
 
-//    TSDebug(PLUGIN_NAME, "[mp4_add_transformxxx] start=%lf, end=%lf, cl=%lld", mc->start, mc->end, mc->cl);
-
     if (mc->start <= 0) {
         mc->start = 0;
     }
@@ -406,7 +390,7 @@ mp4_add_transform(Mp4Context *mc, TSHttpTxn txnp) {
 
     mc->mtc = new Mp4TransformContext(mc->start, mc->end, mc->cl);
 
-    TSDebug(PLUGIN_NAME, "[mp4_add_transform] start=%lf, end=%lf, cl=%lld", mc->start, mc->end, mc->cl);
+//    TSDebug(PLUGIN_NAME, "[mp4_add_transform] start=%lf, end=%lf, cl=%lld", mc->start, mc->end, mc->cl);
 
     TSHttpTxnUntransformedRespCache(txnp, 1);
     TSHttpTxnTransformedRespCache(txnp, 0);
@@ -425,25 +409,21 @@ mp4_transform_entry(TSCont contp, TSEvent event, void * /* edata ATS_UNUSED */) 
 
     if (TSVConnClosedGet(contp)) {
         TSContDestroy(contp);
-//        TSDebug(PLUGIN_NAME, "\tVConn is closed");
         return 0;
     }
 
     switch (event) {
         case TS_EVENT_ERROR:
-//            TSDebug(PLUGIN_NAME, "\tEvent is TS_EVENT_ERROR");
             input_vio = TSVConnWriteVIOGet(contp);
             TSContCall(TSVIOContGet(input_vio), TS_EVENT_ERROR, input_vio);
             break;
 
         case TS_EVENT_VCONN_WRITE_COMPLETE:
-//            TSDebug(PLUGIN_NAME, "\tEvent is TS_EVENT_VCONN_WRITE_COMPLETE");
             TSVConnShutdown(TSTransformOutputVConnGet(contp), 0, 1);
             break;
 
         case TS_EVENT_VCONN_WRITE_READY:
         default:
-//            TSDebug(PLUGIN_NAME, "\tEvent is TS_EVENT_VCONN_WRITE_READY");
             mp4_transform_handler(contp, mc);
             break;
     }
@@ -458,7 +438,7 @@ mp4_transform_handler(TSCont contp, Mp4Context *mc) {
     TSVConn output_conn;
     TSVIO input_vio;
     TSIOBufferReader input_reader;
-    int64_t avail, toread, need, upstream_done;
+    int64_t avail, toread, need, upstream_done, re_meta_length;
     int ret;
     bool write_down;
     Mp4TransformContext *mtc;
@@ -482,7 +462,7 @@ mp4_transform_handler(TSCont contp, Mp4Context *mc) {
     avail = TSIOBufferReaderAvail(input_reader);//可读
     upstream_done = TSVIONDoneGet(input_vio);//已经完成了多少
 
-    toread = TSVIONTodoGet(input_vio);//还剩下多少未读
+//    toread = TSVIONTodoGet(input_vio);//还剩下多少未读
 //    TSDebug(PLUGIN_NAME, "[mp4_transform_handler] before write toread is %ld", toread);
 
     TSIOBufferCopy(mtc->res_buffer, input_reader, avail, 0);
@@ -503,6 +483,7 @@ mp4_transform_handler(TSCont contp, Mp4Context *mc) {
         if (ret == 0) {
             goto trans;
         }
+//        TSDebug(PLUGIN_NAME, "[mp4_transform_handler] range_tag0=%d", int(mc->range_tag));
 
         mtc->parse_over = true;
         mtc->output.buffer = TSIOBufferCreate();
@@ -512,9 +493,22 @@ mp4_transform_handler(TSCont contp, Mp4Context *mc) {
             mtc->output.vio = TSVConnWrite(output_conn, contp, mtc->output.reader, mc->cl);// cl 为原始文件长度
             mtc->raw_transform = true;
 
+            mc->range_tag = false; //不在提供range 功能
+
         } else {//解析成功的话，就按照之前的start, end 的流程走
-            mtc->output.vio = TSVConnWrite(output_conn, contp, mtc->output.reader, mtc->content_length);//修剪之后的文件长度
             mc->real_cl = mtc->content_length;
+            mc->mp4_calculation_range(mtc->meta_length, mtc->start_tail, mtc->end_tail, mtc->content_length);
+            if (mc->range_tag) {
+                mtc->start_tail = mc->range_start_pos;
+                //--mtc->end_tail = mc->range_end_pos;
+//                TSDebug(PLUGIN_NAME,
+//                        "[mp4_transform_handler] start_tail=%lld, end_tail=%lld, range_cl=%lld, mp4_meta_start_dup=%lld,range_end_pos=%lld",
+//                        mtc->start_tail, mtc->end_tail, mc->range_cl, mc->mp4_meta_start_dup, mc->range_end_pos);
+                mtc->output.vio = TSVConnWrite(output_conn, contp, mtc->output.reader, mc->range_cl);//修剪之后的文件长度
+            } else {
+                mtc->output.vio = TSVConnWrite(output_conn, contp, mtc->output.reader, mtc->content_length);//修剪之后的文件长度
+            }
+
         }
     }
 
@@ -533,11 +527,27 @@ mp4_transform_handler(TSCont contp, Mp4Context *mc) {
 
     } else {//解析mp4 meta，并且修改成功
         // copy the new meta data, 如果total < meta_length 说明还没有copy 过
-        if (mtc->total < mtc->meta_length) {
-            TSIOBufferCopy(mtc->output.buffer, mtc->mm.out_handle.reader, mtc->meta_length, 0);
-            mtc->total += mtc->meta_length;
-            write_down = true;
+        if(!mc->meta_copy) {
+            mc->meta_copy = true;
+            if (mc->range_tag) {
+                re_meta_length = mtc->meta_length - mc->mp4_meta_start_dup;
+
+                if (mc->mp4_meta_start_dup) {
+                    TSIOBufferReaderConsume(mtc->mm.out_handle.reader, mc->mp4_meta_start_dup);
+                }
+
+                TSIOBufferCopy(mtc->output.buffer, mtc->mm.out_handle.reader, re_meta_length, 0);
+                mtc->total += re_meta_length;
+                write_down = true;
+
+
+            } else {
+                TSIOBufferCopy(mtc->output.buffer, mtc->mm.out_handle.reader, mtc->meta_length, 0);
+                mtc->total += mtc->meta_length;
+                write_down = true;
+            }
         }
+
 
         // ignore useless part, 忽视无用的部分，  tail 为丢弃的结束位置
         if (mtc->start_pos < mtc->start_tail) {
@@ -653,4 +663,3 @@ mp4_parse_meta(Mp4TransformContext *mtc, bool body_complete) {
 
     return ret;
 }
-

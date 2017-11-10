@@ -6,9 +6,7 @@
   to you under the Apache License, Version 2.0 (the
   "License"); you may not use this file except in compliance
   with the License.  You may obtain a copy of the License at
-
   http://www.apache.org/licenses/LICENSE-2.0
-
   Unless required by applicable law or agreed to in writing, software
   distributed under the License is distributed on an "AS IS" BASIS,
   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -110,8 +108,14 @@ public:
 
 class Mp4Context {
 public:
-    Mp4Context(float s, float e, bool r_tag) : start(s), end(e), range_tag(r_tag), cl(0), real_cl(0), mtc(NULL),
-                                               transform_added(false) {};
+    Mp4Context(float s, float e, int64_t r_start, bool r_tag) : start(s), end(e), range_start(r_start),
+                                                                range_start_pos(r_start),
+                                                                range_end_pos(0),
+                                                                mp4_meta_start_dup(0),
+                                                                range_tag(r_tag),
+                                                                cl(0), real_cl(0),range_cl(0),
+                                                                mtc(NULL),
+                                                                transform_added(false),meta_copy(false){};
 
     ~Mp4Context() {
         if (mtc) {
@@ -120,16 +124,65 @@ public:
         }
     }
 
+    void
+    mp4_calculation_range(int64_t mp4_meta, int64_t s_pos, int64_t e_pos, int64_t content_length) {
+        if (!range_tag)
+            return;
+        int64_t start_pos, end_pos, r_start, r_end;
+        start_pos = s_pos;//10676888
+        end_pos = e_pos;//43339107
+
+        if (end_pos <= 0)
+            end_pos = cl;
+
+        range_end_pos = content_length;//33310117  range_start_pos=27590656
+
+        if (range_start_pos >= range_end_pos || (range_end_pos - range_start_pos) > content_length) {
+            range_tag = false;
+            return;
+        }
+
+        //转换成时间段文件的位置(start,end)
+        if (range_start_pos < mp4_meta) {
+            mp4_meta_start_dup = range_start_pos;
+            range_cl = range_end_pos - range_start_pos;
+            range_start_pos = start_pos;
+
+        } else {
+            mp4_meta_start_dup = mp4_meta;
+            range_cl = range_end_pos - range_start_pos;
+            range_start_pos = range_start_pos - mp4_meta + start_pos;
+        }
+
+        if (range_start_pos >= end_pos) {
+            range_tag = false;
+            return;
+        }
+
+        if (range_start_pos > 0  && (end_pos - range_start_pos) > content_length) {
+            range_tag = false;
+            return;
+        }
+
+
+    }
+
 public:
     float start;
     float end;
+    int64_t range_start;
+    int64_t range_start_pos;
+    int64_t range_end_pos;
+    int64_t mp4_meta_start_dup; //丢弃的字节
     bool range_tag;
     int64_t cl;
-    int64_t real_cl;
+    int64_t real_cl;//start,end的长度
+    int64_t range_cl;
 
     Mp4TransformContext *mtc;
 
     bool transform_added;
+    bool meta_copy; //是否已经复制过
 };
 
 #endif
